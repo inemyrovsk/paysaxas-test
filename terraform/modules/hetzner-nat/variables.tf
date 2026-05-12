@@ -28,3 +28,9 @@ variable "nat_ip" {
   type        = string
   default     = "10.0.1.2"
 }
+
+variable "private_network_cidr" {
+  description = "CIDR of the private network for MASQUERADE rule"
+  type        = string
+  default     = "10.0.0.0/16"
+}

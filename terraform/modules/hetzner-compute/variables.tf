@@ -33,3 +33,9 @@ variable "server_ip" {
   type        = string
   default     = "10.0.2.2"
 }
+
+variable "nat_gateway_ip" {
+  description = "Private IP of the NAT gateway for default route"
+  type        = string
+  default     = "10.0.1.2"
+}

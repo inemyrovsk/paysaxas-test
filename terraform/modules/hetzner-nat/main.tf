@@ -1,7 +1,7 @@
 resource "hcloud_server" "nat" {
   name        = "${var.project_name}-nat"
   server_type = "cx23"
-  image       = "opensuse-16"
+  image       = "debian-12"
   location    = var.location
   ssh_keys    = [var.ssh_key_id]
 
@@ -22,14 +22,31 @@ resource "hcloud_server" "nat" {
     package_update: true
     packages:
       - python3
-      - iptables
+      - fail2ban
     write_files:
-      - path: /etc/sysctl.d/99-nat.conf
-        content: "net.ipv4.ip_forward = 1"
+      - path: /etc/network/interfaces
+        append: true
+        content: |
+          auto eth0
+          iface eth0 inet dhcp
+              post-up echo 1 > /proc/sys/net/ipv4/ip_forward
+              post-up iptables -t nat -A POSTROUTING -s '${var.private_network_cidr}' ! -d '${var.private_network_cidr}' -o eth0 -j MASQUERADE
+      - path: /etc/fail2ban/jail.d/sshd.local
+        content: |
+          [sshd]
+          enabled = true
+          port = ssh
+          maxretry = 5
+          bantime = 86400
+      - path: /etc/ssh/sshd_config.d/hardening.conf
+        content: |
+          PasswordAuthentication no
+          X11Forwarding no
+          MaxAuthTries 5
     runcmd:
-      - sysctl -p /etc/sysctl.d/99-nat.conf
-      - iptables -t nat -A POSTROUTING -s 10.0.0.0/16 -o eth0 -j MASQUERADE
-      - iptables-save > /etc/sysconfig/iptables
+      - systemctl enable --now fail2ban
+      - systemctl restart sshd
+      - systemctl restart networking
       - echo "Cloud-init complete" > /var/log/cloud-init-done
   EOT
 
