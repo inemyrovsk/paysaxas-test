@@ -19,6 +19,8 @@ module "hetzner_compute" {
   network_id          = module.hetzner_network.network_id
   subnet_id           = module.hetzner_network.app_subnet_id
   server_ip           = "10.0.2.2"
+
+  depends_on = [module.hetzner_network]
 }
 
 module "hetzner_nat" {
@@ -30,6 +32,8 @@ module "hetzner_nat" {
   network_id   = module.hetzner_network.network_id
   subnet_id    = module.hetzner_network.public_subnet_id
   nat_ip       = "10.0.1.2"
+
+  depends_on = [module.hetzner_network]
 }
 
 module "hetzner_firewall" {
