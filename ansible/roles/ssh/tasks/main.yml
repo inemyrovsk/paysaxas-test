@@ -1,0 +1,54 @@
+---
+# SSH hardening: change port, disable root password login, restrict access.
+# Handles the chicken-and-egg: Hetzner provisions with port 22,
+# this role switches to ssh_port and reconnects.
+
+- name: Check if SSH is already on custom port
+  ansible.builtin.wait_for:
+    port: "{{ ssh_port }}"
+    host: "{{ ansible_host }}"
+    timeout: 5
+  delegate_to: localhost
+  become: false
+  ignore_errors: true
+  register: ssh_custom_port_check
+
+- name: Configure sshd to listen on custom port
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?Port '
+    line: "Port {{ ssh_port }}"
+  when: ssh_custom_port_check is failed
+  notify: Restart sshd
+
+- name: Disable root password authentication
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PermitRootLogin'
+    line: "PermitRootLogin prohibit-password"
+  notify: Restart sshd
+
+- name: Disable password authentication
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PasswordAuthentication'
+    line: "PasswordAuthentication no"
+  notify: Restart sshd
+
+- name: Flush handlers to apply sshd changes now
+  ansible.builtin.meta: flush_handlers
+
+- name: Switch ansible_port to custom SSH port
+  ansible.builtin.set_fact:
+    ansible_port: "{{ ssh_port }}"
+  when: ssh_custom_port_check is failed
+
+- name: Wait for SSH on new port
+  ansible.builtin.wait_for:
+    port: "{{ ssh_port }}"
+    host: "{{ ansible_host }}"
+    delay: 3
+    timeout: 30
+  delegate_to: localhost
+  become: false
+  when: ssh_custom_port_check is failed

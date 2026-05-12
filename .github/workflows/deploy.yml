@@ -1,0 +1,164 @@
+name: Deploy Infrastructure
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'terraform/**'
+      - 'ansible/**'
+      - 'k8s/**'
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: eu-central-1
+  SECRET_NAME: paysaxas/infrastructure
+
+jobs:
+  terraform:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    outputs:
+      server_ip: ${{ steps.tf-output.outputs.server_ip }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Fetch secrets from Secrets Manager
+        id: secrets
+        run: |
+          SECRET_JSON=$(aws secretsmanager get-secret-value \
+            --secret-id "$SECRET_NAME" \
+            --query SecretString \
+            --output text)
+          echo "::add-mask::$(echo "$SECRET_JSON" | jq -r .hcloud_token)"
+          echo "::add-mask::$(echo "$SECRET_JSON" | jq -r .ssh_private_key)"
+          echo "hcloud_token=$(echo "$SECRET_JSON" | jq -r .hcloud_token)" >> "$GITHUB_OUTPUT"
+          echo "admin_ip=$(echo "$SECRET_JSON" | jq -r .admin_ip)" >> "$GITHUB_OUTPUT"
+          SSH_PUB=$(echo "$SECRET_JSON" | jq -r .ssh_public_key)
+          echo "$SSH_PUB" > /tmp/paysaxas.pub
+          echo "ssh_public_key_path=/tmp/paysaxas.pub" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.10"
+          terraform_wrapper: false
+
+      - name: Resolve backend config
+        id: backend
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "bucket=paysaxas-tfstate-${ACCOUNT_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ steps.backend.outputs.bucket }}" \
+            -backend-config="key=paysaxas/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="dynamodb_table=paysaxas-tflock" \
+            -backend-config="encrypt=true"
+
+      - name: Terraform Validate
+        working-directory: terraform
+        run: terraform validate
+
+      - name: Terraform Plan
+        working-directory: terraform
+        run: terraform plan -out=tfplan
+        env:
+          TF_VAR_hcloud_token: ${{ steps.secrets.outputs.hcloud_token }}
+          TF_VAR_admin_ip: ${{ steps.secrets.outputs.admin_ip }}
+          TF_VAR_ssh_public_key_path: ${{ steps.secrets.outputs.ssh_public_key_path }}
+
+      - name: Terraform Apply
+        working-directory: terraform
+        run: terraform apply tfplan
+        env:
+          TF_VAR_hcloud_token: ${{ steps.secrets.outputs.hcloud_token }}
+          TF_VAR_admin_ip: ${{ steps.secrets.outputs.admin_ip }}
+          TF_VAR_ssh_public_key_path: ${{ steps.secrets.outputs.ssh_public_key_path }}
+
+      - name: Extract outputs
+        id: tf-output
+        working-directory: terraform
+        run: |
+          echo "server_ip=$(terraform output -raw server_public_ip)" >> "$GITHUB_OUTPUT"
+
+  configure:
+    name: Ansible Configure
+    runs-on: ubuntu-latest
+    needs: terraform
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Fetch secrets from Secrets Manager
+        id: secrets
+        run: |
+          SECRET_JSON=$(aws secretsmanager get-secret-value \
+            --secret-id "$SECRET_NAME" \
+            --query SecretString \
+            --output text)
+          SSH_KEY=$(echo "$SECRET_JSON" | jq -r .ssh_private_key)
+          echo "::add-mask::$SSH_KEY"
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/paysaxas
+          chmod 600 ~/.ssh/paysaxas
+          SSH_PUB=$(echo "$SECRET_JSON" | jq -r .ssh_public_key)
+          echo "$SSH_PUB" > ~/.ssh/paysaxas.pub
+
+      - name: Install Ansible
+        run: |
+          pip install ansible-core kubernetes
+          ansible-galaxy collection install -r ansible/requirements.yml
+
+      - name: Write Ansible inventory
+        run: |
+          printf '[k3s_servers]\nserver1 ansible_host=%s ansible_user=root ansible_port=22\n' \
+            "${{ needs.terraform.outputs.server_ip }}" > ansible/inventory.ini
+
+      - name: Wait for SSH to be available
+        run: |
+          SERVER="${{ needs.terraform.outputs.server_ip }}"
+          for i in $(seq 1 30); do
+            if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
+              -i ~/.ssh/paysaxas -p 22022 root@"$SERVER" echo ok 2>/dev/null; then
+              echo "SSH available on port 2222 (already hardened)"
+              sed -i 's/ansible_port=22/ansible_port=22022/' ansible/inventory.ini
+              break
+            elif ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
+              -i ~/.ssh/paysaxas -p 22 root@"$SERVER" echo ok 2>/dev/null; then
+              echo "SSH available on port 22 (initial setup)"
+              break
+            fi
+            echo "Attempt $i: SSH not ready, waiting..."
+            sleep 10
+          done
+
+      - name: Run Ansible playbook
+        run: ansible-playbook -i ansible/inventory.ini ansible/site.yml
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "false"
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/paysaxas ~/.ssh/paysaxas.pub

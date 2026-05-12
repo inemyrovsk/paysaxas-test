@@ -1,0 +1,80 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: paysaxas-app
+  namespace: paysaxas
+  labels:
+    app.kubernetes.io/name: paysaxas-app
+    app.kubernetes.io/part-of: paysaxas
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: paysaxas-app
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: paysaxas-app
+        app.kubernetes.io/part-of: paysaxas
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: app
+          # will use gitops to change image tag
+          image: ghcr.io/inemyrovsk/paysaxas-test/app:latest
+          ports:
+            - containerPort: 5000
+              protocol: TCP
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: paysaxas-db-app
+                  key: uri
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            readOnlyRootFilesystem: true
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: paysaxas-app
+  namespace: paysaxas
+  labels:
+    app.kubernetes.io/name: paysaxas-app
+    app.kubernetes.io/part-of: paysaxas
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: paysaxas-app
+  ports:
+    - port: 5000
+      targetPort: 5000
+      protocol: TCP

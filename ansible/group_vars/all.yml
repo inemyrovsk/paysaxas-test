@@ -1,0 +1,18 @@
+---
+# K3s
+k3s_version: "v1.36.0+k3s1"
+
+# Cilium CNI
+cilium_version: "1.19.3"
+
+# CloudNativePG operator
+cnpg_version: "1.29.1"
+
+# cert-manager
+certmanager_version: "v1.20.2"
+
+# SSH
+ssh_port: 22022
+
+# System user for deployments
+deploy_user: deploy

@@ -1,0 +1,5 @@
+hcloud_token        = "your-hetzner-cloud-api-token"
+ssh_public_key_path = "~/.ssh/paysaxas.pub"
+admin_ip            = "YOUR_IP/32"
+hetzner_server_type = "cpx31"
+hetzner_location    = "fsn1"

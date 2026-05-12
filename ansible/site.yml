@@ -1,0 +1,10 @@
+---
+# Master playbook - orchestrates full server provisioning
+- name: Import common playbook
+  ansible.builtin.import_playbook: playbooks/common.yml
+
+- name: Import K3s playbook
+  ansible.builtin.import_playbook: playbooks/k3s.yml
+
+- name: Import deploy playbook
+  ansible.builtin.import_playbook: playbooks/deploy.yml

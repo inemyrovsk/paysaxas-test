@@ -1,0 +1,66 @@
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: paysaxas-db
+  namespace: paysaxas
+  labels:
+    app.kubernetes.io/name: paysaxas-db
+    app.kubernetes.io/part-of: paysaxas
+spec:
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.4
+
+  enableSuperuserAccess: false
+
+  postgresql:
+    parameters:
+      ssl: "on"
+      log_connections: "on"
+      log_disconnections: "on"
+      log_statement: "ddl"
+    pg_hba:
+      - hostssl all all all scram-sha-256
+
+  bootstrap:
+    initdb:
+      database: paysaxas
+      owner: paysaxas
+
+  storage:
+    size: 10Gi
+
+  # backup:
+  #   barmanObjectStore:
+  #     destinationPath: "s3://<bucket-name>/paysaxas-db/"
+  #     s3Credentials:
+  #       accessKeyId:
+  #         name: aws-creds
+  #         key: ACCESS_KEY_ID
+  #       secretAccessKey:
+  #         name: aws-creds
+  #         key: ACCESS_SECRET_KEY
+  #     wal:
+  #       compression: gzip
+  #     data:
+  #       compression: gzip
+  #   retentionPolicy: "7d"
+
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
+metadata:
+  name: paysaxas-db-pooler
+  namespace: paysaxas
+  labels:
+    app.kubernetes.io/name: paysaxas-db-pooler
+    app.kubernetes.io/part-of: paysaxas
+spec:
+  cluster:
+    name: paysaxas-db
+  instances: 1
+  type: rw
+  pgbouncer:
+    poolMode: transaction
+    parameters:
+      default_pool_size: "20"

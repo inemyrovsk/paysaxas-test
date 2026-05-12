@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: paysaxas
+  labels:
+    app.kubernetes.io/name: paysaxas
+    app.kubernetes.io/part-of: paysaxas
+    kubernetes.io/metadata.name: paysaxas

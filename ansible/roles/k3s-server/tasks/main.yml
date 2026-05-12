@@ -1,0 +1,73 @@
+---
+- name: Create /var/log/kubernetes directory for audit logs
+  ansible.builtin.file:
+    path: /var/log/kubernetes
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Download K3s install script
+  ansible.builtin.get_url:
+    url: https://get.k3s.io
+    dest: /tmp/k3s-install.sh
+    mode: "0755"
+
+- name: Install K3s server
+  ansible.builtin.command:
+    cmd: /tmp/k3s-install.sh
+    creates: /usr/local/bin/k3s
+  environment:
+    INSTALL_K3S_VERSION: "{{ k3s_version }}"
+    INSTALL_K3S_EXEC: >-
+      server
+      --flannel-backend=none
+      --disable-network-policy
+      --disable-kube-proxy
+      --disable=traefik
+      --disable=servicelb
+      --secrets-encryption
+      --node-ip={{ ansible_host }}
+      --advertise-address={{ ansible_host }}
+      --kube-apiserver-arg=anonymous-auth=false
+      --kube-apiserver-arg=audit-log-path=/var/log/kubernetes/audit.log
+      --kube-apiserver-arg=audit-log-maxage=30
+      --kube-apiserver-arg=audit-log-maxbackup=10
+      --kube-apiserver-arg=audit-log-maxsize=100
+  notify: Restart k3s
+
+- name: Wait for K3s to be ready
+  ansible.builtin.command:
+    cmd: k3s kubectl get nodes
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: k3s_ready
+  retries: 30
+  delay: 10
+  until: k3s_ready.rc == 0
+  changed_when: false
+
+- name: Wait for K3s node to be Ready
+  ansible.builtin.shell:
+    cmd: k3s kubectl get nodes -o jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}'
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: node_ready
+  retries: 30
+  delay: 10
+  until: node_ready.stdout == "True"
+  changed_when: false
+
+- name: Fetch kubeconfig from server
+  ansible.builtin.fetch:
+    src: /etc/rancher/k3s/k3s.yaml
+    dest: /tmp/kubeconfig
+    flat: true
+
+- name: Update kubeconfig server address to use public IP
+  ansible.builtin.lineinfile:
+    path: /tmp/kubeconfig
+    regexp: 'server: https://127.0.0.1:6443'
+    line: "    server: https://{{ ansible_host }}:6443"
+  delegate_to: localhost
+  become: false

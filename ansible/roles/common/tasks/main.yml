@@ -1,0 +1,75 @@
+---
+- name: Refresh zypper repositories
+  community.general.zypper_repository:
+    repo: '*'
+    runrefresh: true
+  changed_when: false
+
+- name: Install essential packages
+  community.general.zypper:
+    name:
+      - curl
+      - wget
+      - ca-certificates
+      - chrony
+      - fail2ban
+      - apparmor-utils
+      - jq
+    state: present
+
+- name: Configure chrony for time synchronization
+  ansible.builtin.copy:
+    dest: /etc/chrony.conf
+    content: |
+      # Use Hetzner NTP servers
+      server ntp1.hetzner.de iburst
+      server ntp2.hetzner.com iburst
+      server ntp3.hetzner.net iburst
+
+      # Record the rate at which the system clock gains/losses time
+      driftfile /var/lib/chrony/chrony.drift
+
+      # Allow the system clock to be stepped in the first three updates
+      makestep 1.0 3
+
+      # Enable kernel synchronisation of the real-time clock (RTC)
+      rtcsync
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart chronyd
+
+- name: Enable and start chronyd
+  ansible.builtin.systemd:
+    name: chronyd
+    state: started
+    enabled: true
+
+- name: Enable and start fail2ban
+  ansible.builtin.systemd:
+    name: fail2ban
+    state: started
+    enabled: true
+
+- name: Configure fail2ban SSH jail
+  ansible.builtin.copy:
+    dest: /etc/fail2ban/jail.local
+    content: |
+      [sshd]
+      enabled = true
+      port = ssh
+      filter = sshd
+      logpath = /var/log/messages
+      maxretry = 5
+      bantime = 3600
+      findtime = 600
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart fail2ban
+
+- name: Ensure AppArmor is enabled
+  ansible.builtin.systemd:
+    name: apparmor
+    state: started
+    enabled: true

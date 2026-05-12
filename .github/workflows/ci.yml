@@ -1,0 +1,114 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  version:
+    name: Generate SemVer
+    runs-on: ubuntu-latest
+    outputs:
+      semVer: ${{ steps.version.outputs.semVer }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@v4.4.2
+        with:
+          versionSpec: '6.x'
+
+      - name: Generate Semantic Version
+        id: version
+        uses: gittools/actions/gitversion/execute@v4.4.2
+
+  build:
+    name: Build and Push Images
+    runs-on: ubuntu-latest
+    needs: version
+    permissions:
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build App image using Buildah
+        id: build-app-image
+        uses: redhat-actions/buildah-build@v2
+        with:
+          image: app
+          tags: v${{ needs.version.outputs.semVer }} latest ${{ github.sha }}
+          containerfiles: ./app/Dockerfile
+          context: ./app
+          oci: true
+
+      - name: Build Worker image using Buildah
+        id: build-worker-image
+        uses: redhat-actions/buildah-build@v2
+        with:
+          image: worker
+          tags: v${{ needs.version.outputs.semVer }} latest ${{ github.sha }}
+          containerfiles: ./worker/Dockerfile
+          context: ./worker
+          oci: true
+
+      - name: Push App to GitHub Container Registry
+        uses: redhat-actions/push-to-registry@v2
+        with:
+          image: ${{ steps.build-app-image.outputs.image }}
+          tags: ${{ steps.build-app-image.outputs.tags }}
+          registry: ghcr.io/${{ github.repository }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push Worker to GitHub Container Registry
+        uses: redhat-actions/push-to-registry@v2
+        with:
+          image: ${{ steps.build-worker-image.outputs.image }}
+          tags: ${{ steps.build-worker-image.outputs.tags }}
+          registry: ghcr.io/${{ github.repository }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Export built App image to tarball
+        run: |
+          buildah push ${{ steps.build-app-image.outputs.image-with-tag }} docker-archive:/tmp/app-image.tar
+
+      - name: Export built Worker image to tarball
+        run: |
+          buildah push ${{ steps.build-worker-image.outputs.image-with-tag }} docker-archive:/tmp/worker-image.tar
+
+      - name: Save built App image as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-image-v${{ needs.version.outputs.semVer }}
+          path: /tmp/app-image.tar
+          retention-days: 7
+
+      - name: Save built Worker image as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: worker-image-v${{ needs.version.outputs.semVer }}
+          path: /tmp/worker-image.tar
+          retention-days: 7
+
+  release:
+    name: Create Release Tag
+    runs-on: ubuntu-latest
+    needs: [version, build]
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Push Release Tag
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+          git tag v${{ needs.version.outputs.semVer }}
+          git push origin v${{ needs.version.outputs.semVer }}

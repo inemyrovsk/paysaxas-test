@@ -1,0 +1,131 @@
+---
+# Default deny all ingress and egress in the paysaxas namespace
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny
+  namespace: paysaxas
+  labels:
+    app.kubernetes.io/part-of: paysaxas
+spec:
+  endpointSelector: {}
+  ingressDeny:
+    - {}
+  egressDeny:
+    - {}
+
+---
+# Allow DNS egress to kube-system (CoreDNS) on port 53 UDP/TCP
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: paysaxas
+  labels:
+    app.kubernetes.io/part-of: paysaxas
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+
+---
+# Allow gateway ingress to app pods on port 5000
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-gateway-to-app
+  namespace: paysaxas
+  labels:
+    app.kubernetes.io/part-of: paysaxas
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: paysaxas-app
+  ingress:
+    - fromEntities:
+        - cluster
+      fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:io.cilium.gateway/owning-gateway: paysaxas-gateway
+      toPorts:
+        - ports:
+            - port: "5000"
+              protocol: TCP
+
+---
+# Allow app pods egress to CNPG pooler (PgBouncer) on port 5432
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-app-to-pooler
+  namespace: paysaxas
+  labels:
+    app.kubernetes.io/part-of: paysaxas
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: paysaxas-app
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            cnpg.io/poolerName: paysaxas-db-pooler
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+
+---
+# Allow pooler egress to CNPG PostgreSQL pods on port 5432
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-pooler-to-postgres
+  namespace: paysaxas
+  labels:
+    app.kubernetes.io/part-of: paysaxas
+spec:
+  endpointSelector:
+    matchLabels:
+      cnpg.io/poolerName: paysaxas-db-pooler
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: paysaxas-db
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+
+---
+# Allow CNPG pods egress to AWS S3 (port 443) for backups
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-cnpg-to-s3
+  namespace: paysaxas
+  labels:
+    app.kubernetes.io/part-of: paysaxas
+spec:
+  endpointSelector:
+    matchLabels:
+      cnpg.io/cluster: paysaxas-db
+  egress:
+    - toFQDNs:
+        - matchPattern: "*.s3.amazonaws.com"
+        - matchPattern: "*.s3.*.amazonaws.com"
+        - matchPattern: "s3.amazonaws.com"
+        - matchPattern: "s3.*.amazonaws.com"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
