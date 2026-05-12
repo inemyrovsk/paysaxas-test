@@ -49,18 +49,43 @@ resource "hcloud_server" "main" {
             ip route replace default via ${var.nat_gateway_ip} dev "$IFACE" metric 100
           fi
     runcmd:
-      # Detect private network interface dynamically (not hardcoded eth1)
+      # Detect private network interface dynamically
       - |
-        IFACE=$(ip -o link show | awk -F': ' '/ens10|enp7s0/ {print $2; exit}')
-        if [ -z "$IFACE" ]; then
-          # Fallback: find the interface with our private IP
-          IFACE=$(ip -o addr show | grep '${var.server_ip}' | awk '{print $2}')
+        set +e
+        route_dev() { awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}'; }
+        PRIV_IF=$(ip -4 route show 10.0.0.0/16 2>/dev/null | route_dev | head -n 1)
+        if [ -z "$PRIV_IF" ]; then
+          PRIV_IF=$(ip -4 route get 10.0.0.1 2>/dev/null | route_dev | head -n 1)
         fi
-        # Add default route immediately
-        ip route replace default via ${var.nat_gateway_ip} dev "$IFACE" metric 100
-        # Persist via NetworkManager connection
-        nmcli connection modify "$(nmcli -t -f NAME,DEVICE con show | grep "$IFACE" | cut -d: -f1)" \
-          +ipv4.routes "0.0.0.0/0 ${var.nat_gateway_ip} 100" 2>/dev/null || true
+        if [ -z "$PRIV_IF" ]; then
+          PRIV_IF=$(ip -o addr show | grep '${var.server_ip}' | awk '{print $2}')
+        fi
+        echo "Detected private interface: $PRIV_IF"
+
+        # Open firewalld for private network (openSUSE enables it by default)
+        if command -v firewall-cmd &>/dev/null && [ -n "$PRIV_IF" ]; then
+          firewall-cmd --zone=trusted --add-interface="$PRIV_IF" --permanent
+          firewall-cmd --reload
+          echo "Firewalld: added $PRIV_IF to trusted zone"
+        fi
+
+        # Persist default route via NAT gateway (Hetzner DHCP change Aug 2025)
+        METRIC=100
+        if [ -n "$PRIV_IF" ] && systemctl is-active --quiet NetworkManager; then
+          NM_CONN=$(nmcli -g GENERAL.CONNECTION device show "$PRIV_IF" 2>/dev/null | head -1)
+          if [ -n "$NM_CONN" ]; then
+            nmcli connection modify "$NM_CONN" +ipv4.routes "0.0.0.0/0 ${var.nat_gateway_ip} $METRIC" 2>/dev/null || true
+            nmcli connection modify "$NM_CONN" ipv4.never-default yes 2>/dev/null || true
+            nmcli connection modify "$NM_CONN" ipv4.route-metric $METRIC 2>/dev/null || true
+            nmcli connection up "$NM_CONN" 2>/dev/null || true
+            echo "NetworkManager: persisted default route via ${var.nat_gateway_ip}"
+          fi
+          # Runtime guard: add route immediately
+          ip route replace default via ${var.nat_gateway_ip} dev "$PRIV_IF" metric $METRIC 2>/dev/null || true
+        elif [ -n "$PRIV_IF" ]; then
+          ip route replace default via ${var.nat_gateway_ip} dev "$PRIV_IF" metric $METRIC 2>/dev/null || true
+        fi
+        set -e
       - echo "Cloud-init complete" > /var/log/cloud-init-done
   EOT
 
