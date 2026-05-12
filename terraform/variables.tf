@@ -18,11 +18,11 @@ variable "admin_ip" {
 variable "hetzner_server_type" {
   description = "Hetzner server type for the K3s node"
   type        = string
-  default     = "cpx31"
+  default     = "cpx32"
 }
 
 variable "hetzner_location" {
   description = "Hetzner datacenter location"
   type        = string
-  default     = "fsn1"
+  default     = "nbg1"
 }
