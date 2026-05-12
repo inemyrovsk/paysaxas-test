@@ -1,6 +1,6 @@
 resource "hcloud_server" "nat" {
   name        = "${var.project_name}-nat"
-  server_type = "cx22"
+  server_type = "cx23"
   image       = "opensuse-16"
   location    = var.location
   ssh_keys    = [var.ssh_key_id]

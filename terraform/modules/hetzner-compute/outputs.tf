@@ -5,7 +5,7 @@ output "server_id" {
 
 output "server_private_ip" {
   description = "Private IP address of the server in the Hetzner network"
-  value       = hcloud_server_network.main.ip
+  value       = one(hcloud_server.main.network[*].ip)
 }
 
 output "ssh_key_id" {

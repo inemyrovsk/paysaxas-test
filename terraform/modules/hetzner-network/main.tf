@@ -3,6 +3,11 @@ resource "hcloud_network" "main" {
   ip_range = "10.0.0.0/16"
 }
 
+moved {
+  from = hcloud_network_subnet.main
+  to   = hcloud_network_subnet.public
+}
+
 resource "hcloud_network_subnet" "public" {
   network_id   = hcloud_network.main.id
   type         = "cloud"

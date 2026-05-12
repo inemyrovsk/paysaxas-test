@@ -15,6 +15,13 @@ resource "hcloud_server" "main" {
     ipv6_enabled = false
   }
 
+  # Inline network block required — server with no public IP needs
+  # a private network attached at creation time to boot.
+  network {
+    network_id = var.network_id
+    ip         = var.server_ip
+  }
+
   labels = {
     project     = var.project_name
     environment = "production"
@@ -36,10 +43,5 @@ resource "hcloud_server" "main" {
   lifecycle {
     ignore_changes = [user_data]
   }
-}
 
-resource "hcloud_server_network" "main" {
-  server_id = hcloud_server.main.id
-  subnet_id = var.subnet_id
-  ip        = var.server_ip
 }
