@@ -1,5 +1,9 @@
 ---
 # Master playbook - orchestrates full server provisioning
+# NAT gateway must be configured first (K3s server routes through it)
+- name: Import NAT gateway playbook
+  ansible.builtin.import_playbook: playbooks/nat.yml
+
 - name: Import common playbook
   ansible.builtin.import_playbook: playbooks/common.yml
 

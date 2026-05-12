@@ -8,13 +8,8 @@ variable "location" {
   type        = string
 }
 
-variable "network_id" {
-  description = "ID of the Hetzner private network"
-  type        = number
-}
-
 variable "subnet_id" {
-  description = "ID of the network subnet (used for dependency ordering)"
+  description = "ID of the app subnet for the load balancer network attachment"
   type        = string
 }
 

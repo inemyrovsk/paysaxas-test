@@ -3,19 +3,14 @@ variable "project_name" {
   type        = string
 }
 
-variable "ssh_public_key_path" {
-  description = "Path to SSH public key file"
-  type        = string
-}
-
-variable "server_type" {
-  description = "Hetzner server type"
-  type        = string
-}
-
 variable "location" {
   description = "Hetzner datacenter location"
   type        = string
+}
+
+variable "ssh_key_id" {
+  description = "ID of the Hetzner SSH key resource"
+  type        = number
 }
 
 variable "network_id" {
@@ -24,12 +19,12 @@ variable "network_id" {
 }
 
 variable "subnet_id" {
-  description = "ID of the app subnet to attach the server to"
+  description = "ID of the public subnet to attach the NAT gateway to"
   type        = string
 }
 
-variable "server_ip" {
-  description = "Private IP address for the K3s server"
+variable "nat_ip" {
+  description = "Private IP address for the NAT gateway"
   type        = string
-  default     = "10.0.2.2"
+  default     = "10.0.1.2"
 }

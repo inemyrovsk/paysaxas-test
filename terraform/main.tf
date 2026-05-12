@@ -5,7 +5,8 @@
 module "hetzner_network" {
   source = "./modules/hetzner-network"
 
-  project_name = local.project_name
+  project_name   = local.project_name
+  nat_gateway_ip = "10.0.1.2"
 }
 
 module "hetzner_compute" {
@@ -16,7 +17,19 @@ module "hetzner_compute" {
   server_type         = var.hetzner_server_type
   location            = var.hetzner_location
   network_id          = module.hetzner_network.network_id
-  subnet_id           = module.hetzner_network.subnet_id
+  subnet_id           = module.hetzner_network.app_subnet_id
+  server_ip           = "10.0.2.2"
+}
+
+module "hetzner_nat" {
+  source = "./modules/hetzner-nat"
+
+  project_name = local.project_name
+  location     = var.hetzner_location
+  ssh_key_id   = module.hetzner_compute.ssh_key_id
+  network_id   = module.hetzner_network.network_id
+  subnet_id    = module.hetzner_network.public_subnet_id
+  nat_ip       = "10.0.1.2"
 }
 
 module "hetzner_firewall" {
@@ -24,7 +37,7 @@ module "hetzner_firewall" {
 
   project_name = local.project_name
   admin_ip     = var.admin_ip
-  server_ids   = [module.hetzner_compute.server_id]
+  server_ids   = [module.hetzner_nat.nat_server_id]
 }
 
 module "hetzner_lb" {
@@ -32,8 +45,7 @@ module "hetzner_lb" {
 
   project_name = local.project_name
   location     = var.hetzner_location
-  network_id   = module.hetzner_network.network_id
-  subnet_id    = module.hetzner_network.subnet_id
+  subnet_id    = module.hetzner_network.app_subnet_id
   server_id    = module.hetzner_compute.server_id
 }
 
@@ -62,7 +74,8 @@ module "aws_backup" {
 
 resource "local_file" "ansible_inventory" {
   content = templatefile("${path.module}/../ansible/inventory.ini.tpl", {
-    server_ip = module.hetzner_compute.server_public_ip
+    nat_ip    = module.hetzner_nat.nat_public_ip
+    server_ip = module.hetzner_compute.server_private_ip
   })
   filename = "${path.module}/../ansible/inventory.ini"
 }

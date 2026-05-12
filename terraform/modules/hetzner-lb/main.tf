@@ -6,9 +6,7 @@ resource "hcloud_load_balancer" "main" {
 
 resource "hcloud_load_balancer_network" "main" {
   load_balancer_id = hcloud_load_balancer.main.id
-  network_id       = var.network_id
-
-  # Subnet dependency is implicit via module input from hetzner-network.subnet_id
+  subnet_id        = var.subnet_id
 }
 
 # HTTP - TCP passthrough

@@ -3,12 +3,12 @@ output "server_id" {
   value       = hcloud_server.main.id
 }
 
-output "server_public_ip" {
-  description = "Public IPv4 address of the server"
-  value       = hcloud_server.main.ipv4_address
-}
-
 output "server_private_ip" {
   description = "Private IP address of the server in the Hetzner network"
-  value       = one(hcloud_server.main.network[*].ip)
+  value       = hcloud_server_network.main.ip
+}
+
+output "ssh_key_id" {
+  description = "ID of the Hetzner SSH key (shared with other modules)"
+  value       = hcloud_ssh_key.main.id
 }

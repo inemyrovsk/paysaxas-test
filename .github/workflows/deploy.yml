@@ -23,6 +23,7 @@ jobs:
     name: Terraform Apply
     runs-on: ubuntu-latest
     outputs:
+      nat_ip: ${{ steps.tf-output.outputs.nat_ip }}
       server_ip: ${{ steps.tf-output.outputs.server_ip }}
     steps:
       - name: Checkout repository
@@ -95,7 +96,8 @@ jobs:
         id: tf-output
         working-directory: terraform
         run: |
-          echo "server_ip=$(terraform output -raw server_public_ip)" >> "$GITHUB_OUTPUT"
+          echo "nat_ip=$(terraform output -raw nat_public_ip)" >> "$GITHUB_OUTPUT"
+          echo "server_ip=$(terraform output -raw server_private_ip)" >> "$GITHUB_OUTPUT"
 
   configure:
     name: Ansible Configure
@@ -133,24 +135,41 @@ jobs:
 
       - name: Write Ansible inventory
         run: |
-          printf '[k3s_servers]\nserver1 ansible_host=%s ansible_user=root ansible_port=22\n' \
-            "${{ needs.terraform.outputs.server_ip }}" > ansible/inventory.ini
+          NAT="${{ needs.terraform.outputs.nat_ip }}"
+          K3S="${{ needs.terraform.outputs.server_ip }}"
+          cat > ansible/inventory.ini <<EOF
+          [nat]
+          nat1 ansible_host=${NAT} ansible_user=root ansible_port=22
 
-      - name: Wait for SSH to be available
+          [k3s_servers]
+          server1 ansible_host=${K3S} ansible_user=root ansible_port=22 ansible_ssh_common_args='-o ProxyJump=root@${NAT} -o StrictHostKeyChecking=no'
+          EOF
+          sed -i 's/^          //' ansible/inventory.ini
+
+      - name: Wait for NAT gateway SSH
         run: |
-          SERVER="${{ needs.terraform.outputs.server_ip }}"
+          NAT="${{ needs.terraform.outputs.nat_ip }}"
           for i in $(seq 1 30); do
             if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
-              -i ~/.ssh/paysaxas -p 22022 root@"$SERVER" echo ok 2>/dev/null; then
-              echo "SSH available on port 2222 (already hardened)"
-              sed -i 's/ansible_port=22/ansible_port=22022/' ansible/inventory.ini
-              break
-            elif ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
-              -i ~/.ssh/paysaxas -p 22 root@"$SERVER" echo ok 2>/dev/null; then
-              echo "SSH available on port 22 (initial setup)"
+              -i ~/.ssh/paysaxas root@"$NAT" echo ok 2>/dev/null; then
+              echo "NAT gateway SSH available"
               break
             fi
-            echo "Attempt $i: SSH not ready, waiting..."
+            echo "Attempt $i: NAT SSH not ready, waiting..."
+            sleep 10
+          done
+
+      - name: Wait for K3s server SSH via NAT
+        run: |
+          NAT="${{ needs.terraform.outputs.nat_ip }}"
+          K3S="${{ needs.terraform.outputs.server_ip }}"
+          for i in $(seq 1 30); do
+            if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
+              -i ~/.ssh/paysaxas -J "root@${NAT}" root@"$K3S" echo ok 2>/dev/null; then
+              echo "K3s server SSH available via NAT"
+              break
+            fi
+            echo "Attempt $i: K3s SSH not ready, waiting..."
             sleep 10
           done
 

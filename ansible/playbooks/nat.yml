@@ -1,0 +1,9 @@
+---
+- name: NAT gateway configuration
+  hosts: nat
+  become: true
+  tags:
+    - nat
+  roles:
+    - role: ../roles/common
+    - role: ../roles/nat

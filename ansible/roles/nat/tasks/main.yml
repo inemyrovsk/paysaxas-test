@@ -1,0 +1,29 @@
+---
+# Minimal NAT gateway hardening — this server only forwards traffic.
+
+- name: Ensure IP forwarding is enabled
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: "1"
+    sysctl_set: true
+    state: present
+    reload: true
+
+- name: Ensure iptables MASQUERADE rule exists
+  ansible.builtin.iptables:
+    table: nat
+    chain: POSTROUTING
+    source: 10.0.0.0/16
+    out_interface: eth0
+    jump: MASQUERADE
+    state: present
+
+- name: Install iptables-persistent equivalent
+  community.general.zypper:
+    name: iptables
+    state: present
+
+- name: Save iptables rules
+  ansible.builtin.shell:
+    cmd: iptables-save > /etc/sysconfig/iptables
+  changed_when: true

@@ -10,6 +10,11 @@ resource "hcloud_server" "main" {
   image       = "opensuse-16"
   ssh_keys    = [hcloud_ssh_key.main.id]
 
+  public_net {
+    ipv4_enabled = false
+    ipv6_enabled = false
+  }
+
   labels = {
     project     = var.project_name
     environment = "production"
@@ -28,12 +33,13 @@ resource "hcloud_server" "main" {
       - echo "Cloud-init complete" > /var/log/cloud-init-done
   EOT
 
-  # Subnet dependency is implicit via module input from hetzner-network.subnet_id
-  network {
-    network_id = var.network_id
-  }
-
   lifecycle {
     ignore_changes = [user_data]
   }
+}
+
+resource "hcloud_server_network" "main" {
+  server_id = hcloud_server.main.id
+  subnet_id = var.subnet_id
+  ip        = var.server_ip
 }

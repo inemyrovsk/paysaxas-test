@@ -1,10 +1,10 @@
-output "server_public_ip" {
-  description = "Public IP address of the K3s server"
-  value       = module.hetzner_compute.server_public_ip
+output "nat_public_ip" {
+  description = "Public IP of the NAT gateway (SSH jump host)"
+  value       = module.hetzner_nat.nat_public_ip
 }
 
 output "server_private_ip" {
-  description = "Private IP address of the K3s server (for Ansible inventory)"
+  description = "Private IP address of the K3s server"
   value       = module.hetzner_compute.server_private_ip
 }
 

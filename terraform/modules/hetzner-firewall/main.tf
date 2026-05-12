@@ -1,36 +1,13 @@
 resource "hcloud_firewall" "main" {
   name = "${var.project_name}-firewall"
 
-  # HTTP - needed for LB health checks and traffic
-  rule {
-    direction  = "in"
-    protocol   = "tcp"
-    port       = "80"
-    source_ips = ["0.0.0.0/0", "::/0"]
-  }
-
-  # HTTPS - needed for LB health checks and traffic
-  rule {
-    direction  = "in"
-    protocol   = "tcp"
-    port       = "443"
-    source_ips = ["0.0.0.0/0", "::/0"]
-  }
-
-  # SSH default port - needed for initial provisioning before Ansible changes it
+  # SSH - open to all for now (GitHub Actions has dynamic IPs)
+  # TODO: restrict to admin_ip + GitHub Actions IP ranges
   rule {
     direction  = "in"
     protocol   = "tcp"
     port       = "22"
-    source_ips = [var.admin_ip]
-  }
-
-  # SSH custom port - used after Ansible hardens sshd
-  rule {
-    direction  = "in"
-    protocol   = "tcp"
-    port       = var.ssh_port
-    source_ips = [var.admin_ip]
+    source_ips = ["0.0.0.0/0", "::/0"]
   }
 
   # ICMP
@@ -40,7 +17,10 @@ resource "hcloud_firewall" "main" {
     source_ips = ["0.0.0.0/0", "::/0"]
   }
 
-  apply_to {
-    server = var.server_ids[0]
+  dynamic "apply_to" {
+    for_each = var.server_ids
+    content {
+      server = apply_to.value
+    }
   }
 }
