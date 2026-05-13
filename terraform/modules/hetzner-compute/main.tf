@@ -31,39 +31,31 @@ resource "hcloud_server" "main" {
   user_data = <<-EOT
     #cloud-config
     hostname: ${var.project_name}-k3s
-    package_update: true
-    packages:
-      - python3
-      - python3-pip
-      - curl
     write_files:
-      # DNS resolvers (private-only servers don't get DNS from Hetzner DHCP)
       - path: /etc/resolv.conf
         content: |
           nameserver 1.1.1.1
           nameserver 8.8.8.8
-      # SSH hardening — change port before first connection
       - path: /etc/ssh/sshd_config.d/hardening.conf
         content: |
           Port ${var.ssh_port}
           PasswordAuthentication no
           X11Forwarding no
           MaxAuthTries 5
-    runcmd:
-      # Default route via Hetzner virtual gateway (10.0.0.1)
-      # Hetzner network route 0.0.0.0/0 → NAT (10.0.1.2) handles the rest at platform level
+    # bootcmd runs BEFORE package_update and runcmd — sets up routing first
+    bootcmd:
       - |
-        PRIV_IF=$(ip -o addr show | grep '${var.server_ip}' | awk '{print $2}')
-        if [ -z "$PRIV_IF" ]; then
-          for i in $(seq 1 30); do
-            PRIV_IF=$(ip -o addr show | grep '${var.server_ip}' | awk '{print $2}')
-            [ -n "$PRIV_IF" ] && break
-            sleep 2
-          done
-        fi
-        if [ -n "$PRIV_IF" ]; then
-          ip route add default via 10.0.0.1 dev "$PRIV_IF" metric 100 2>/dev/null || true
-        fi
+        for i in $(seq 1 60); do
+          PRIV_IF=$(ip -o addr show | grep '${var.server_ip}' | awk '{print $2}')
+          [ -n "$PRIV_IF" ] && break
+          sleep 1
+        done
+        [ -n "$PRIV_IF" ] && ip route add default via 10.0.0.1 dev "$PRIV_IF" metric 100 2>/dev/null || true
+    package_update: true
+    packages:
+      - python3
+      - curl
+    runcmd:
       - systemctl restart sshd
       - echo "Cloud-init complete" > /var/log/cloud-init-done
   EOT
