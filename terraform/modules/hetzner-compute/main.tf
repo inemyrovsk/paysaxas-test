@@ -42,15 +42,20 @@ resource "hcloud_server" "main" {
           PasswordAuthentication no
           X11Forwarding no
           MaxAuthTries 5
-    # bootcmd runs BEFORE package_update and runcmd — sets up routing first
+      # Persist default route — survives DHCP renewals
+      - path: /etc/network/interfaces.d/60-default-route
+        content: |
+          auto enp7s0
+          iface enp7s0 inet dhcp
+              post-up ip route add default via 10.0.0.1 dev enp7s0 metric 100 2>/dev/null || true
+    # bootcmd runs BEFORE everything — sets up route for package_update
     bootcmd:
       - |
         for i in $(seq 1 60); do
-          PRIV_IF=$(ip -o addr show | grep '${var.server_ip}' | awk '{print $2}')
-          [ -n "$PRIV_IF" ] && break
+          ip -o addr show | grep -q '${var.server_ip}' && break
           sleep 1
         done
-        [ -n "$PRIV_IF" ] && ip route add default via 10.0.0.1 dev "$PRIV_IF" metric 100 2>/dev/null || true
+        ip route add default via 10.0.0.1 dev enp7s0 metric 100 2>/dev/null || true
     package_update: true
     packages:
       - python3
