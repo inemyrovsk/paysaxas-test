@@ -31,7 +31,7 @@ spec:
 
   backup:
     barmanObjectStore:
-      destinationPath: "s3://paysaxas-db-backups/paysaxas-db/"
+      destinationPath: "s3://{{ s3_backup_bucket }}/paysaxas-db/"
       s3Credentials:
         accessKeyId:
           name: aws-backup-creds
@@ -53,9 +53,6 @@ kind: ScheduledBackup
 metadata:
   name: paysaxas-db-backup
   namespace: paysaxas
-  labels:
-    app.kubernetes.io/name: paysaxas-db-backup
-    app.kubernetes.io/part-of: paysaxas
 spec:
   schedule: "0 0 3 * * *"
   backupOwnerReference: self
@@ -69,9 +66,6 @@ kind: Pooler
 metadata:
   name: paysaxas-db-pooler
   namespace: paysaxas
-  labels:
-    app.kubernetes.io/name: paysaxas-db-pooler
-    app.kubernetes.io/part-of: paysaxas
 spec:
   cluster:
     name: paysaxas-db

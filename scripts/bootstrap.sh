@@ -256,6 +256,24 @@ DEPLOY_POLICY=$(jq -n \
         Resource: $secret_arn
       },
       {
+        Sid: "IAMBackupUser",
+        Effect: "Allow",
+        Action: [
+          "iam:CreateUser",
+          "iam:DeleteUser",
+          "iam:GetUser",
+          "iam:TagUser",
+          "iam:UntagUser",
+          "iam:CreateAccessKey",
+          "iam:DeleteAccessKey",
+          "iam:ListAccessKeys",
+          "iam:PutUserPolicy",
+          "iam:DeleteUserPolicy",
+          "iam:GetUserPolicy"
+        ],
+        Resource: ("arn:aws:iam::" + $account_id + ":user/paysaxas-*")
+      },
+      {
         Sid: "STSGetCallerIdentity",
         Effect: "Allow",
         Action: "sts:GetCallerIdentity",

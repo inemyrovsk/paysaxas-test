@@ -162,3 +162,69 @@
   ansible.builtin.file:
     path: /tmp/autoscaler.yml
     state: absent
+
+# --- Backup: AWS credentials secret for CNPG ---
+
+- name: Create aws-backup-creds secret for CNPG
+  ansible.builtin.shell:
+    cmd: |
+      kubectl apply -f - <<'EOF'
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: aws-backup-creds
+        namespace: paysaxas
+      stringData:
+        ACCESS_KEY_ID: "{{ backup_access_key_id }}"
+        ACCESS_SECRET_KEY: "{{ backup_secret_access_key }}"
+      EOF
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: aws_creds_apply
+  changed_when: "'created' in aws_creds_apply.stdout or 'configured' in aws_creds_apply.stdout"
+  no_log: true
+
+# --- Backup: CNPG database with S3 backup + ScheduledBackup ---
+
+- name: Template database manifest with backup config
+  ansible.builtin.template:
+    src: database.yml.j2
+    dest: /tmp/database.yml
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Apply database manifest
+  ansible.builtin.command:
+    cmd: kubectl apply -f /tmp/database.yml
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: db_apply
+  changed_when: "'created' in db_apply.stdout or 'configured' in db_apply.stdout"
+
+- name: Clean up database manifest
+  ansible.builtin.file:
+    path: /tmp/database.yml
+    state: absent
+
+# --- Backup: K3s etcd snapshots to S3 ---
+
+- name: Add etcd snapshot config to K3s config
+  ansible.builtin.blockinfile:
+    path: /etc/rancher/k3s/config.yaml
+    marker: "# {mark} ETCD SNAPSHOT CONFIG"
+    block: |
+      etcd-s3: true
+      etcd-s3-bucket: "{{ s3_backup_bucket }}"
+      etcd-s3-region: eu-central-1
+      etcd-s3-folder: etcd/
+      etcd-s3-access-key: "{{ backup_access_key_id }}"
+      etcd-s3-secret-key: "{{ backup_secret_access_key }}"
+      etcd-snapshot-schedule-cron: "0 */6 * * *"
+      etcd-snapshot-retention: 5
+      etcd-snapshot-compress: true
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: Restart k3s for etcd backup

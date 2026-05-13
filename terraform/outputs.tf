@@ -22,3 +22,15 @@ output "kms_key_arn" {
   description = "ARN of the KMS key used for backup encryption"
   value       = module.aws_kms.key_arn
 }
+
+output "backup_access_key_id" {
+  description = "IAM access key ID for CNPG/K3s backups"
+  value       = module.aws_backup_iam.access_key_id
+  sensitive   = true
+}
+
+output "backup_secret_access_key" {
+  description = "IAM secret access key for CNPG/K3s backups"
+  value       = module.aws_backup_iam.secret_access_key
+  sensitive   = true
+}
