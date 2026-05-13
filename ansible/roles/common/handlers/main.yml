@@ -1,9 +1,4 @@
 ---
-- name: Restart timesyncd
-  ansible.builtin.systemd:
-    name: systemd-timesyncd
-    state: restarted
-
 - name: Restart fail2ban
   ansible.builtin.systemd:
     name: fail2ban

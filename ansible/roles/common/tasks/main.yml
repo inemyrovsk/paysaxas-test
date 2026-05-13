@@ -24,13 +24,13 @@
     owner: root
     group: root
     mode: "0644"
-  notify: Restart timesyncd
 
-- name: Enable and start systemd-timesyncd
+- name: Enable and start timesyncd
   ansible.builtin.systemd:
     name: systemd-timesyncd
     state: started
     enabled: true
+  ignore_errors: true
 
 - name: Enable and start fail2ban
   ansible.builtin.systemd:
