@@ -34,20 +34,37 @@ spec:
             - containerPort: 5000
               protocol: TCP
           env:
-            - name: DATABASE_URL
+            - name: POSTGRES_HOST
+              value: paysaxas-db-pooler
+            - name: POSTGRES_PORT
               valueFrom:
                 secretKeyRef:
                   name: paysaxas-db-app
-                  key: uri
+                  key: port
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: paysaxas-db-app
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: paysaxas-db-app
+                  key: password
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: paysaxas-db-app
+                  key: dbname
           readinessProbe:
             httpGet:
-              path: /
+              path: /ready
               port: 5000
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /
+              path: /health
               port: 5000
             initialDelaySeconds: 15
             periodSeconds: 20
