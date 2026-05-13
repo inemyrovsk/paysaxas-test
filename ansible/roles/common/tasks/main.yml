@@ -10,37 +10,25 @@
       - curl
       - wget
       - ca-certificates
-      - chrony
       - fail2ban
       - jq
       - ufw
     state: present
 
-- name: Configure chrony for time synchronization
+- name: Configure systemd-timesyncd with Hetzner NTP
   ansible.builtin.copy:
-    dest: /etc/chrony/chrony.conf
+    dest: /etc/systemd/timesyncd.conf
     content: |
-      # Use Hetzner NTP servers
-      server ntp1.hetzner.de iburst
-      server ntp2.hetzner.com iburst
-      server ntp3.hetzner.net iburst
-
-      # Record the rate at which the system clock gains/losses time
-      driftfile /var/lib/chrony/chrony.drift
-
-      # Allow the system clock to be stepped in the first three updates
-      makestep 1.0 3
-
-      # Enable kernel synchronisation of the real-time clock (RTC)
-      rtcsync
+      [Time]
+      NTP=ntp1.hetzner.de ntp2.hetzner.com ntp3.hetzner.net
     owner: root
     group: root
     mode: "0644"
-  notify: Restart chrony
+  notify: Restart timesyncd
 
-- name: Enable and start chrony
+- name: Enable and start systemd-timesyncd
   ansible.builtin.systemd:
-    name: chrony
+    name: systemd-timesyncd
     state: started
     enabled: true
 

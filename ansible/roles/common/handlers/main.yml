@@ -1,7 +1,7 @@
 ---
-- name: Restart chrony
+- name: Restart timesyncd
   ansible.builtin.systemd:
-    name: chrony
+    name: systemd-timesyncd
     state: restarted
 
 - name: Restart fail2ban
