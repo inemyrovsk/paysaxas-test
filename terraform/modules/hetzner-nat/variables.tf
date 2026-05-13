@@ -29,6 +29,12 @@ variable "nat_ip" {
   default     = "10.0.1.2"
 }
 
+variable "ssh_port" {
+  description = "SSH port for the NAT server"
+  type        = string
+  default     = "22022"
+}
+
 variable "private_network_cidr" {
   description = "CIDR of the private network for MASQUERADE rule"
   type        = string

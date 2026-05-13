@@ -35,11 +35,12 @@ resource "hcloud_server" "nat" {
         content: |
           [sshd]
           enabled = true
-          port = ssh
+          port = ${var.ssh_port}
           maxretry = 5
           bantime = 86400
       - path: /etc/ssh/sshd_config.d/hardening.conf
         content: |
+          Port ${var.ssh_port}
           PasswordAuthentication no
           X11Forwarding no
           MaxAuthTries 5

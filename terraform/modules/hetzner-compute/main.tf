@@ -42,6 +42,13 @@ resource "hcloud_server" "main" {
         content: |
           nameserver 1.1.1.1
           nameserver 8.8.8.8
+      # SSH hardening — change port before first connection
+      - path: /etc/ssh/sshd_config.d/hardening.conf
+        content: |
+          Port ${var.ssh_port}
+          PasswordAuthentication no
+          X11Forwarding no
+          MaxAuthTries 5
     runcmd:
       # Default route via Hetzner virtual gateway (10.0.0.1)
       # Hetzner network route 0.0.0.0/0 → NAT (10.0.1.2) handles the rest at platform level
@@ -57,6 +64,7 @@ resource "hcloud_server" "main" {
         if [ -n "$PRIV_IF" ]; then
           ip route add default via 10.0.0.1 dev "$PRIV_IF" metric 100 2>/dev/null || true
         fi
+      - systemctl restart sshd
       - echo "Cloud-init complete" > /var/log/cloud-init-done
   EOT
 

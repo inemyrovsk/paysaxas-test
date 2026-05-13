@@ -34,6 +34,12 @@ variable "server_ip" {
   default     = "10.0.2.2"
 }
 
+variable "ssh_port" {
+  description = "SSH port for the K3s server"
+  type        = string
+  default     = "22022"
+}
+
 variable "nat_gateway_ip" {
   description = "Private IP of the NAT gateway for default route"
   type        = string

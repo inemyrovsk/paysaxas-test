@@ -30,21 +30,25 @@ if [[ -z "${HCLOUD_TOKEN:-}" ]]; then
   echo ""
 fi
 
-# --- Admin IP --- #TODO: zero trust
-# if [[ -z "${ADMIN_IP:-}" ]]; then
-#   DETECTED_IP=$(curl -s https://checkip.amazonaws.com)
-#   read -rp "Enter admin IP for SSH access [${DETECTED_IP}/32]: " ADMIN_IP
-#   ADMIN_IP="${ADMIN_IP:-${DETECTED_IP}/32}"
-# fi
+# --- Admin IP ---
+ADMIN_IP="${ADMIN_IP:-0.0.0.0/0}"
 
 # --- SSH Key Pair ---
-echo "Generating SSH key pair..."
-rm -f "$SSH_KEY_FILE" "${SSH_KEY_FILE}.pub"
-ssh-keygen -t ed25519 -f "$SSH_KEY_FILE" -C "paysaxas-deploy" -N "" -q
-SSH_PRIVATE_KEY=$(cat "$SSH_KEY_FILE")
-SSH_PUBLIC_KEY=$(cat "${SSH_KEY_FILE}.pub")
-rm -f "$SSH_KEY_FILE" "${SSH_KEY_FILE}.pub"
-echo "SSH key pair generated and stored in memory"
+# Reuse existing key from Secrets Manager if available, otherwise generate new
+if aws secretsmanager get-secret-value --secret-id "$SECRET_NAME" --region "$REGION" &>/dev/null; then
+  echo "Reusing SSH key from existing Secrets Manager secret"
+  EXISTING_SECRET=$(aws secretsmanager get-secret-value --secret-id "$SECRET_NAME" --region "$REGION" --query SecretString --output text)
+  SSH_PRIVATE_KEY=$(echo "$EXISTING_SECRET" | jq -r .ssh_private_key)
+  SSH_PUBLIC_KEY=$(echo "$EXISTING_SECRET" | jq -r .ssh_public_key)
+else
+  echo "Generating new SSH key pair..."
+  rm -f "$SSH_KEY_FILE" "${SSH_KEY_FILE}.pub"
+  ssh-keygen -t ed25519 -f "$SSH_KEY_FILE" -C "paysaxas-deploy" -N "" -q
+  SSH_PRIVATE_KEY=$(cat "$SSH_KEY_FILE")
+  SSH_PUBLIC_KEY=$(cat "${SSH_KEY_FILE}.pub")
+  rm -f "$SSH_KEY_FILE" "${SSH_KEY_FILE}.pub"
+  echo "SSH key pair generated"
+fi
 
 # --- S3 State Bucket ---
 if aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null; then

@@ -142,37 +142,24 @@ jobs:
           LB="${{ needs.terraform.outputs.lb_ip }}"
           cat > ansible/inventory.ini <<EOF
           [nat]
-          nat1 ansible_host=${NAT} ansible_user=root
+          nat1 ansible_host=${NAT} ansible_user=root ansible_port=22022
 
           [k3s_servers]
-          server1 ansible_host=${K3S} ansible_user=root
+          server1 ansible_host=${K3S} ansible_user=root ansible_port=22022
 
           [k3s_servers:vars]
           lb_public_ip=${LB}
-          ansible_ssh_common_args=-o StrictHostKeyChecking=no -o ProxyCommand="ssh -i ~/.ssh/paysaxas -o StrictHostKeyChecking=no -W %h:%p root@${NAT}"
+          ansible_ssh_common_args=-o StrictHostKeyChecking=no -o ProxyCommand="ssh -p 22022 -i ~/.ssh/paysaxas -o StrictHostKeyChecking=no -W %h:%p root@${NAT}"
           EOF
           sed -i 's/^          //' ansible/inventory.ini
-
-      - name: Detect SSH ports
-        run: |
-          NAT="${{ needs.terraform.outputs.nat_ip }}"
-          K3S="${{ needs.terraform.outputs.server_ip }}"
-          # Check if K3s server SSH is already on custom port
-          if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
-            -i ~/.ssh/paysaxas -p 22022 \
-            -o ProxyCommand="ssh -i ~/.ssh/paysaxas -o StrictHostKeyChecking=no -W %h:%p root@${NAT}" \
-            root@"$K3S" echo ok 2>/dev/null; then
-            echo "K3s SSH on port 22022"
-            sed -i "s/ansible_host=${K3S} ansible_user=root/ansible_host=${K3S} ansible_user=root ansible_port=22022/" ansible/inventory.ini
-          fi
 
       - name: Wait for NAT gateway SSH
         run: |
           NAT="${{ needs.terraform.outputs.nat_ip }}"
           for i in $(seq 1 30); do
             if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
-              -i ~/.ssh/paysaxas root@"$NAT" echo ok 2>/dev/null; then
-              echo "NAT gateway SSH available"
+              -i ~/.ssh/paysaxas -p 22022 root@"$NAT" echo ok 2>/dev/null; then
+              echo "NAT gateway SSH available on port 22022"
               break
             fi
             echo "Attempt $i: waiting..."
@@ -185,10 +172,10 @@ jobs:
           K3S="${{ needs.terraform.outputs.server_ip }}"
           for i in $(seq 1 30); do
             if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
-              -i ~/.ssh/paysaxas \
-              -o ProxyCommand="ssh -i ~/.ssh/paysaxas -o StrictHostKeyChecking=no -W %h:%p root@${NAT}" \
+              -i ~/.ssh/paysaxas -p 22022 \
+              -o ProxyCommand="ssh -p 22022 -i ~/.ssh/paysaxas -o StrictHostKeyChecking=no -W %h:%p root@${NAT}" \
               root@"$K3S" echo ok 2>/dev/null; then
-              echo "K3s server SSH available"
+              echo "K3s server SSH available on port 22022"
               break
             fi
             echo "Attempt $i: waiting..."
