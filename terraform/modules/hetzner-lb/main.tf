@@ -9,32 +9,48 @@ resource "hcloud_load_balancer_network" "main" {
   subnet_id        = var.subnet_id
 }
 
-# HTTP - TCP passthrough
+# HTTP - forward to Cilium Gateway API NodePort
 resource "hcloud_load_balancer_service" "http" {
   load_balancer_id = hcloud_load_balancer.main.id
   protocol         = "tcp"
   listen_port      = 80
-  destination_port = 80
+  destination_port = 30080
 
   health_check {
     protocol = "tcp"
-    port     = 80
+    port     = 30080
     interval = 10
     timeout  = 5
     retries  = 3
   }
 }
 
-# HTTPS - TCP passthrough (TLS terminated at ingress controller)
+# HTTPS - forward to Cilium Gateway API NodePort (TLS terminated at Cilium)
 resource "hcloud_load_balancer_service" "https" {
   load_balancer_id = hcloud_load_balancer.main.id
   protocol         = "tcp"
   listen_port      = 443
-  destination_port = 443
+  destination_port = 30443
 
   health_check {
     protocol = "tcp"
-    port     = 80
+    port     = 30080
+    interval = 10
+    timeout  = 5
+    retries  = 3
+  }
+}
+
+# K8s API - TCP passthrough for kubectl access via LB
+resource "hcloud_load_balancer_service" "k8s_api" {
+  load_balancer_id = hcloud_load_balancer.main.id
+  protocol         = "tcp"
+  listen_port      = 6443
+  destination_port = 6443
+
+  health_check {
+    protocol = "tcp"
+    port     = 6443
     interval = 10
     timeout  = 5
     retries  = 3

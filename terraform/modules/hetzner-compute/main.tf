@@ -37,33 +37,25 @@ resource "hcloud_server" "main" {
       - python3-pip
       - curl
     write_files:
-      # Persist default route via NAT gateway across reboots/DHCP renewals
-      # Required since Hetzner removed legacy DHCP Router option (Aug 2025)
-      - path: /etc/NetworkManager/dispatcher.d/99-default-route
-        permissions: '0755'
+      # DNS resolvers (private-only servers don't get DNS from Hetzner DHCP)
+      - path: /etc/resolv.conf
         content: |
-          #!/bin/bash
-          # Add default route via NAT gateway on the private network interface
-          IFACE=$(ip -o link show | awk -F': ' '/ens10|enp7s0/ {print $2; exit}')
-          if [ -n "$IFACE" ] && [ "$1" = "$IFACE" ] && [ "$2" = "up" ]; then
-            ip route replace default via ${var.nat_gateway_ip} dev "$IFACE" metric 100
-          fi
+          nameserver 1.1.1.1
+          nameserver 8.8.8.8
     runcmd:
-      # Wait for private interface to appear
+      # Default route via Hetzner virtual gateway (10.0.0.1)
+      # Hetzner network route 0.0.0.0/0 → NAT (10.0.1.2) handles the rest at platform level
       - |
-        for i in $(seq 1 30); do
-          PRIV_IF=$(ip -o addr show | grep '${var.server_ip}' | awk '{print $2}')
-          [ -n "$PRIV_IF" ] && break
-          sleep 2
-        done
+        PRIV_IF=$(ip -o addr show | grep '${var.server_ip}' | awk '{print $2}')
+        if [ -z "$PRIV_IF" ]; then
+          for i in $(seq 1 30); do
+            PRIV_IF=$(ip -o addr show | grep '${var.server_ip}' | awk '{print $2}')
+            [ -n "$PRIV_IF" ] && break
+            sleep 2
+          done
+        fi
         if [ -n "$PRIV_IF" ]; then
-          echo "Detected private interface: $PRIV_IF"
-          # Add default route via NAT gateway (Hetzner DHCP change Aug 2025)
-          ip route replace default via ${var.nat_gateway_ip} dev "$PRIV_IF" metric 100 2>/dev/null || true
-          # Persist in /etc/network/interfaces
-          echo "  post-up ip route replace default via ${var.nat_gateway_ip} dev $PRIV_IF metric 100" >> /etc/network/interfaces
-        else
-          echo "WARN: private interface not found" >&2
+          ip route add default via 10.0.0.1 dev "$PRIV_IF" metric 100 2>/dev/null || true
         fi
       - echo "Cloud-init complete" > /var/log/cloud-init-done
   EOT

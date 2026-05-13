@@ -8,4 +8,4 @@
     - role: ../roles/common
     - role: ../roles/users
     - role: ../roles/ssh
-    - role: ../roles/firewalld
+    - role: ../roles/ufw

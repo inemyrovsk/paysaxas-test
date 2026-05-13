@@ -1,0 +1,22 @@
+#cloud-config
+package_update: true
+packages:
+  - curl
+write_files:
+  - path: /etc/resolv.conf
+    content: |
+      nameserver 1.1.1.1
+      nameserver 8.8.8.8
+runcmd:
+  # Add default route via Hetzner virtual gateway for private network egress
+  - |
+    for i in $(seq 1 30); do
+      PRIV_IF=$(ip -o link show | awk -F': ' '!/lo|eth0/ {print $2; exit}')
+      [ -n "$PRIV_IF" ] && break
+      sleep 2
+    done
+    if [ -n "$PRIV_IF" ]; then
+      ip route add default via 10.0.0.1 dev "$PRIV_IF" metric 100 2>/dev/null || true
+    fi
+  # Join K3s cluster as agent
+  - curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} K3S_URL=https://{{ ansible_host }}:6443 K3S_TOKEN={{ k3s_node_token }} sh -s - agent

@@ -89,7 +89,6 @@
     values:
       crds:
         enabled: true
-      enableGatewayAPI: true
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
@@ -113,3 +112,53 @@
     timeout: "5m0s"
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+# --- Cluster Autoscaler ---
+
+- name: Read K3s node token
+  ansible.builtin.slurp:
+    src: /var/lib/rancher/k3s/server/node-token
+  register: k3s_token_raw
+
+- name: Set K3s node token fact
+  ansible.builtin.set_fact:
+    k3s_node_token: "{{ k3s_token_raw.content | b64decode | trim }}"
+
+- name: Template worker cloud-init
+  ansible.builtin.template:
+    src: worker-cloudinit.yml.j2
+    dest: /tmp/worker-cloudinit.yml
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Encode worker cloud-init as base64
+  ansible.builtin.shell:
+    cmd: base64 -w0 /tmp/worker-cloudinit.yml
+  register: cloudinit_b64
+  changed_when: false
+
+- name: Set cloud-init base64 fact
+  ansible.builtin.set_fact:
+    worker_cloudinit_b64: "{{ cloudinit_b64.stdout }}"
+
+- name: Template autoscaler manifest to server
+  ansible.builtin.template:
+    src: autoscaler.yml.j2
+    dest: /tmp/autoscaler.yml
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Apply autoscaler manifest
+  ansible.builtin.command:
+    cmd: kubectl apply -f /tmp/autoscaler.yml
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: autoscaler_apply
+  changed_when: "'created' in autoscaler_apply.stdout or 'configured' in autoscaler_apply.stdout"
+
+- name: Clean up autoscaler manifest (contains secrets)
+  ansible.builtin.file:
+    path: /tmp/autoscaler.yml
+    state: absent

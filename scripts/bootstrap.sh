@@ -181,7 +181,7 @@ DEPLOY_POLICY=$(jq -n \
   --arg tfstate_bucket_arn "arn:aws:s3:::${BUCKET_NAME}" \
   --arg backup_bucket_arn "$BACKUP_BUCKET_ARN" \
   --arg dynamo_arn "arn:aws:dynamodb:${REGION}:${ACCOUNT_ID}:table/${DYNAMO_TABLE}" \
-  --arg secret_arn "arn:aws:secretsmanager:${REGION}:${ACCOUNT_ID}:secret:paysaxas/infrastructure-*" \
+  --arg secret_arn "arn:aws:secretsmanager:${REGION}:${ACCOUNT_ID}:secret:paysaxas/*" \
   --arg account_id "$ACCOUNT_ID" \
   '{
     Version: "2012-10-17",
@@ -241,9 +241,14 @@ DEPLOY_POLICY=$(jq -n \
         Resource: $dynamo_arn
       },
       {
-        Sid: "SecretsManagerRead",
+        Sid: "SecretsManager",
         Effect: "Allow",
-        Action: "secretsmanager:GetSecretValue",
+        Action: [
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:PutSecretValue",
+          "secretsmanager:CreateSecret",
+          "secretsmanager:DescribeSecret"
+        ],
         Resource: $secret_arn
       },
       {

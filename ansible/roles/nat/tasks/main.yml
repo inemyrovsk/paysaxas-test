@@ -14,16 +14,19 @@
     table: nat
     chain: POSTROUTING
     source: 10.0.0.0/16
+    destination: "! 10.0.0.0/16"
     out_interface: eth0
     jump: MASQUERADE
     state: present
 
-- name: Install iptables-persistent equivalent
-  community.general.zypper:
-    name: iptables
+- name: Install iptables-persistent
+  ansible.builtin.apt:
+    name: iptables-persistent
     state: present
+  environment:
+    DEBIAN_FRONTEND: noninteractive
 
 - name: Save iptables rules
   ansible.builtin.shell:
-    cmd: iptables-save > /etc/sysconfig/iptables
+    cmd: iptables-save > /etc/iptables/rules.v4
   changed_when: true

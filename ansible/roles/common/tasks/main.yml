@@ -1,25 +1,24 @@
 ---
-- name: Refresh zypper repositories
-  community.general.zypper_repository:
-    repo: '*'
-    runrefresh: true
-  changed_when: false
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
 
 - name: Install essential packages
-  community.general.zypper:
+  ansible.builtin.apt:
     name:
       - curl
       - wget
       - ca-certificates
       - chrony
       - fail2ban
-      - apparmor-utils
       - jq
+      - ufw
     state: present
 
 - name: Configure chrony for time synchronization
   ansible.builtin.copy:
-    dest: /etc/chrony.conf
+    dest: /etc/chrony/chrony.conf
     content: |
       # Use Hetzner NTP servers
       server ntp1.hetzner.de iburst
@@ -37,11 +36,11 @@
     owner: root
     group: root
     mode: "0644"
-  notify: Restart chronyd
+  notify: Restart chrony
 
-- name: Enable and start chronyd
+- name: Enable and start chrony
   ansible.builtin.systemd:
-    name: chronyd
+    name: chrony
     state: started
     enabled: true
 
@@ -59,7 +58,7 @@
       enabled = true
       port = ssh
       filter = sshd
-      logpath = /var/log/messages
+      logpath = /var/log/auth.log
       maxretry = 5
       bantime = 3600
       findtime = 600
@@ -67,9 +66,3 @@
     group: root
     mode: "0644"
   notify: Restart fail2ban
-
-- name: Ensure AppArmor is enabled
-  ansible.builtin.systemd:
-    name: apparmor
-    state: started
-    enabled: true

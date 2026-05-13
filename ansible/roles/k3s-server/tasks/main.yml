@@ -13,6 +13,16 @@
     dest: /tmp/k3s-install.sh
     mode: "0755"
 
+- name: Write K3s config file
+  ansible.builtin.copy:
+    dest: /etc/rancher/k3s/config.yaml
+    content: |
+      tls-san:
+        - {{ lb_public_ip }}
+    owner: root
+    group: root
+    mode: "0600"
+
 - name: Install K3s server
   ansible.builtin.command:
     cmd: /tmp/k3s-install.sh
@@ -27,6 +37,7 @@
       --disable=traefik
       --disable=servicelb
       --secrets-encryption
+      --tls-san={{ lb_public_ip }}
       --node-ip={{ ansible_host }}
       --advertise-address={{ ansible_host }}
       --kube-apiserver-arg=anonymous-auth=false
@@ -47,16 +58,8 @@
   until: k3s_ready.rc == 0
   changed_when: false
 
-- name: Wait for K3s node to be Ready
-  ansible.builtin.shell:
-    cmd: k3s kubectl get nodes -o jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}'
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  register: node_ready
-  retries: 30
-  delay: 10
-  until: node_ready.stdout == "True"
-  changed_when: false
+# Node won't be Ready until Cilium CNI is installed (k3s-addons role).
+# Only check that the API server responds.
 
 - name: Fetch kubeconfig from server
   ansible.builtin.fetch:
@@ -64,10 +67,34 @@
     dest: /tmp/kubeconfig
     flat: true
 
-- name: Update kubeconfig server address to use public IP
+- name: Update kubeconfig server address to LB public IP
   ansible.builtin.lineinfile:
     path: /tmp/kubeconfig
     regexp: 'server: https://127.0.0.1:6443'
-    line: "    server: https://{{ ansible_host }}:6443"
+    line: "    server: https://{{ lb_public_ip }}:6443"
   delegate_to: localhost
   become: false
+
+- name: Upload kubeconfig to AWS Secrets Manager
+  ansible.builtin.shell:
+    cmd: >
+      aws secretsmanager put-secret-value
+      --secret-id paysaxas/kubeconfig
+      --secret-string file:///tmp/kubeconfig
+      --region eu-central-1
+  delegate_to: localhost
+  become: false
+  register: sm_put
+  failed_when: false
+
+- name: Create kubeconfig secret if not exists
+  ansible.builtin.shell:
+    cmd: >
+      aws secretsmanager create-secret
+      --name paysaxas/kubeconfig
+      --description "K3s kubeconfig for paysaxas cluster"
+      --secret-string file:///tmp/kubeconfig
+      --region eu-central-1
+  delegate_to: localhost
+  become: false
+  when: sm_put.rc != 0

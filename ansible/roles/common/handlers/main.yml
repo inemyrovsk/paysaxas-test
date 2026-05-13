@@ -1,7 +1,7 @@
 ---
-- name: Restart chronyd
+- name: Restart chrony
   ansible.builtin.systemd:
-    name: chronyd
+    name: chrony
     state: restarted
 
 - name: Restart fail2ban

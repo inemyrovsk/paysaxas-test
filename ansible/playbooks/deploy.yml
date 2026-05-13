@@ -4,7 +4,27 @@
   become: true
   tags:
     - deploy
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   tasks:
+    - name: Install Gateway API CRDs
+      ansible.builtin.command:
+        cmd: kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.1/config/crd/standard/gateway.networking.k8s.io_gatewayclasses.yaml
+      register: gw_crds
+      changed_when: "'created' in gw_crds.stdout or 'configured' in gw_crds.stdout"
+
+    - name: Install Gateway API HTTPRoute CRD
+      ansible.builtin.command:
+        cmd: kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.1/config/crd/standard/gateway.networking.k8s.io_httproutes.yaml
+      register: hr_crds
+      changed_when: "'created' in hr_crds.stdout or 'configured' in hr_crds.stdout"
+
+    - name: Install Gateway API Gateway CRD
+      ansible.builtin.command:
+        cmd: kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.1/config/crd/standard/gateway.networking.k8s.io_gateways.yaml
+      register: gw_crd
+      changed_when: "'created' in gw_crd.stdout or 'configured' in gw_crd.stdout"
+
     - name: Create manifests directory on server
       ansible.builtin.file:
         path: /opt/k8s-manifests
@@ -21,10 +41,14 @@
         group: root
         mode: "0644"
 
-    - name: Apply K8s manifests
+    - name: Apply namespace first
+      ansible.builtin.command:
+        cmd: kubectl apply -f /opt/k8s-manifests/namespace.yml
+      register: ns_apply
+      changed_when: "'created' in ns_apply.stdout or 'configured' in ns_apply.stdout"
+
+    - name: Apply remaining K8s manifests
       ansible.builtin.command:
         cmd: kubectl apply -R -f /opt/k8s-manifests/
-      environment:
-        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
       register: kubectl_apply
-      changed_when: "'configured' in kubectl_apply.stdout or 'created' in kubectl_apply.stdout"
+      changed_when: "'created' in kubectl_apply.stdout or 'configured' in kubectl_apply.stdout"

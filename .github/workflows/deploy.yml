@@ -25,6 +25,7 @@ jobs:
     outputs:
       nat_ip: ${{ steps.tf-output.outputs.nat_ip }}
       server_ip: ${{ steps.tf-output.outputs.server_ip }}
+      lb_ip: ${{ steps.tf-output.outputs.lb_ip }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -46,8 +47,12 @@ jobs:
           echo "::add-mask::$(echo "$SECRET_JSON" | jq -r .ssh_private_key)"
           echo "hcloud_token=$(echo "$SECRET_JSON" | jq -r .hcloud_token)" >> "$GITHUB_OUTPUT"
           echo "admin_ip=$(echo "$SECRET_JSON" | jq -r .admin_ip)" >> "$GITHUB_OUTPUT"
-          SSH_PUB=$(echo "$SECRET_JSON" | jq -r .ssh_public_key)
-          echo "$SSH_PUB" > /tmp/paysaxas.pub
+          # Write SSH keys
+          mkdir -p ~/.ssh
+          echo "$SECRET_JSON" | jq -r .ssh_private_key > ~/.ssh/paysaxas
+          echo "$SECRET_JSON" | jq -r .ssh_public_key > ~/.ssh/paysaxas.pub
+          chmod 600 ~/.ssh/paysaxas
+          echo "$SECRET_JSON" | jq -r .ssh_public_key > /tmp/paysaxas.pub
           echo "ssh_public_key_path=/tmp/paysaxas.pub" >> "$GITHUB_OUTPUT"
 
       - name: Setup Terraform
@@ -72,10 +77,6 @@ jobs:
             -backend-config="dynamodb_table=paysaxas-tflock" \
             -backend-config="encrypt=true"
 
-      - name: Terraform Validate
-        working-directory: terraform
-        run: terraform validate
-
       - name: Terraform Plan
         working-directory: terraform
         run: terraform plan -out=tfplan
@@ -98,6 +99,7 @@ jobs:
         run: |
           echo "nat_ip=$(terraform output -raw nat_public_ip)" >> "$GITHUB_OUTPUT"
           echo "server_ip=$(terraform output -raw server_private_ip)" >> "$GITHUB_OUTPUT"
+          echo "lb_ip=$(terraform output -raw lb_public_ip)" >> "$GITHUB_OUTPUT"
 
   configure:
     name: Ansible Configure
@@ -113,20 +115,20 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Fetch secrets from Secrets Manager
+      - name: Fetch secrets and write SSH keys
         id: secrets
         run: |
           SECRET_JSON=$(aws secretsmanager get-secret-value \
             --secret-id "$SECRET_NAME" \
             --query SecretString \
             --output text)
-          SSH_KEY=$(echo "$SECRET_JSON" | jq -r .ssh_private_key)
-          echo "::add-mask::$SSH_KEY"
+          HCLOUD_TOKEN=$(echo "$SECRET_JSON" | jq -r .hcloud_token)
+          echo "::add-mask::$HCLOUD_TOKEN"
+          echo "hcloud_token=$HCLOUD_TOKEN" >> "$GITHUB_OUTPUT"
           mkdir -p ~/.ssh
-          echo "$SSH_KEY" > ~/.ssh/paysaxas
+          echo "$SECRET_JSON" | jq -r .ssh_private_key > ~/.ssh/paysaxas
+          echo "$SECRET_JSON" | jq -r .ssh_public_key > ~/.ssh/paysaxas.pub
           chmod 600 ~/.ssh/paysaxas
-          SSH_PUB=$(echo "$SECRET_JSON" | jq -r .ssh_public_key)
-          echo "$SSH_PUB" > ~/.ssh/paysaxas.pub
 
       - name: Install Ansible
         run: |
@@ -137,14 +139,32 @@ jobs:
         run: |
           NAT="${{ needs.terraform.outputs.nat_ip }}"
           K3S="${{ needs.terraform.outputs.server_ip }}"
+          LB="${{ needs.terraform.outputs.lb_ip }}"
           cat > ansible/inventory.ini <<EOF
           [nat]
-          nat1 ansible_host=${NAT} ansible_user=root ansible_port=22
+          nat1 ansible_host=${NAT} ansible_user=root
 
           [k3s_servers]
-          server1 ansible_host=${K3S} ansible_user=root ansible_port=22 ansible_ssh_common_args='-o ProxyJump=root@${NAT} -o StrictHostKeyChecking=no'
+          server1 ansible_host=${K3S} ansible_user=root
+
+          [k3s_servers:vars]
+          lb_public_ip=${LB}
+          ansible_ssh_common_args=-o StrictHostKeyChecking=no -o ProxyCommand="ssh -i ~/.ssh/paysaxas -o StrictHostKeyChecking=no -W %h:%p root@${NAT}"
           EOF
           sed -i 's/^          //' ansible/inventory.ini
+
+      - name: Detect SSH ports
+        run: |
+          NAT="${{ needs.terraform.outputs.nat_ip }}"
+          K3S="${{ needs.terraform.outputs.server_ip }}"
+          # Check if K3s server SSH is already on custom port
+          if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
+            -i ~/.ssh/paysaxas -p 22022 \
+            -o ProxyCommand="ssh -i ~/.ssh/paysaxas -o StrictHostKeyChecking=no -W %h:%p root@${NAT}" \
+            root@"$K3S" echo ok 2>/dev/null; then
+            echo "K3s SSH on port 22022"
+            sed -i "s/ansible_host=${K3S} ansible_user=root/ansible_host=${K3S} ansible_user=root ansible_port=22022/" ansible/inventory.ini
+          fi
 
       - name: Wait for NAT gateway SSH
         run: |
@@ -155,7 +175,7 @@ jobs:
               echo "NAT gateway SSH available"
               break
             fi
-            echo "Attempt $i: NAT SSH not ready, waiting..."
+            echo "Attempt $i: waiting..."
             sleep 10
           done
 
@@ -165,19 +185,25 @@ jobs:
           K3S="${{ needs.terraform.outputs.server_ip }}"
           for i in $(seq 1 30); do
             if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
-              -i ~/.ssh/paysaxas -J "root@${NAT}" root@"$K3S" echo ok 2>/dev/null; then
-              echo "K3s server SSH available via NAT"
+              -i ~/.ssh/paysaxas \
+              -o ProxyCommand="ssh -i ~/.ssh/paysaxas -o StrictHostKeyChecking=no -W %h:%p root@${NAT}" \
+              root@"$K3S" echo ok 2>/dev/null; then
+              echo "K3s server SSH available"
               break
             fi
-            echo "Attempt $i: K3s SSH not ready, waiting..."
+            echo "Attempt $i: waiting..."
             sleep 10
           done
 
       - name: Run Ansible playbook
-        run: ansible-playbook -i ansible/inventory.ini ansible/site.yml
+        run: |
+          ANSIBLE_CONFIG=ansible/ansible.cfg ansible-playbook \
+            -i ansible/inventory.ini \
+            ansible/site.yml \
+            -e "hcloud_token=${{ steps.secrets.outputs.hcloud_token }}"
         env:
           ANSIBLE_HOST_KEY_CHECKING: "false"
 
-      - name: Cleanup SSH key
+      - name: Cleanup SSH keys
         if: always()
         run: rm -f ~/.ssh/paysaxas ~/.ssh/paysaxas.pub

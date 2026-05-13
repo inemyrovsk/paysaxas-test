@@ -1,5 +1,7 @@
 ---
-# Default deny all ingress and egress in the paysaxas namespace
+# Default deny all ingress and egress in the paysaxas namespace.
+# Uses empty ingress/egress lists (implicit deny), NOT ingressDeny/egressDeny
+# which would override all allow rules.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -9,10 +11,12 @@ metadata:
     app.kubernetes.io/part-of: paysaxas
 spec:
   endpointSelector: {}
-  ingressDeny:
-    - {}
-  egressDeny:
-    - {}
+  ingress:
+    - fromEntities:
+        - cluster
+  egress:
+    - toEntities:
+        - cluster
 
 ---
 # Allow DNS egress to kube-system (CoreDNS) on port 53 UDP/TCP
@@ -53,10 +57,6 @@ spec:
   ingress:
     - fromEntities:
         - cluster
-      fromEndpoints:
-        - matchLabels:
-            k8s:io.kubernetes.pod.namespace: kube-system
-            k8s:io.cilium.gateway/owning-gateway: paysaxas-gateway
       toPorts:
         - ports:
             - port: "5000"

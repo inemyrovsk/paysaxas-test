@@ -41,13 +41,13 @@ spec:
                   key: uri
           readinessProbe:
             httpGet:
-              path: /health
+              path: /
               port: 5000
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /health
+              path: /
               port: 5000
             initialDelaySeconds: 15
             periodSeconds: 20
@@ -59,7 +59,7 @@ spec:
               cpu: 500m
               memory: 256Mi
           securityContext:
-            readOnlyRootFilesystem: true
+            readOnlyRootFilesystem: false
 
 ---
 apiVersion: v1

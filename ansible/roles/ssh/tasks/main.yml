@@ -3,22 +3,18 @@
 # Handles the chicken-and-egg: Hetzner provisions with port 22,
 # this role switches to ssh_port and reconnects.
 
-- name: Check if SSH is already on custom port
-  ansible.builtin.wait_for:
-    port: "{{ ssh_port }}"
-    host: "{{ ansible_host }}"
-    timeout: 5
-  delegate_to: localhost
-  become: false
-  ignore_errors: true
-  register: ssh_custom_port_check
+- name: Check current SSH port in sshd_config
+  ansible.builtin.shell:
+    cmd: grep -E '^Port ' /etc/ssh/sshd_config || echo "Port 22"
+  register: current_ssh_port
+  changed_when: false
 
 - name: Configure sshd to listen on custom port
   ansible.builtin.lineinfile:
     path: /etc/ssh/sshd_config
     regexp: '^#?Port '
     line: "Port {{ ssh_port }}"
-  when: ssh_custom_port_check is failed
+  when: "ssh_port | string not in current_ssh_port.stdout"
   notify: Restart sshd
 
 - name: Disable root password authentication
@@ -41,14 +37,10 @@
 - name: Switch ansible_port to custom SSH port
   ansible.builtin.set_fact:
     ansible_port: "{{ ssh_port }}"
-  when: ssh_custom_port_check is failed
+  when: "ssh_port | string not in current_ssh_port.stdout"
 
-- name: Wait for SSH on new port
-  ansible.builtin.wait_for:
-    port: "{{ ssh_port }}"
-    host: "{{ ansible_host }}"
+- name: Wait for SSH to come back on new port
+  ansible.builtin.wait_for_connection:
     delay: 3
     timeout: 30
-  delegate_to: localhost
-  become: false
-  when: ssh_custom_port_check is failed
+  when: "ssh_port | string not in current_ssh_port.stdout"
