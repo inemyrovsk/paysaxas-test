@@ -77,7 +77,7 @@ module "aws_backup_iam" {
 }
 
 # -----------------------------------------------------------------------------
-# Generate Ansible inventory from Terraform outputs
+# Ansible Inventory
 # -----------------------------------------------------------------------------
 
 resource "local_file" "ansible_inventory" {
