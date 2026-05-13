@@ -42,12 +42,18 @@ resource "hcloud_server" "main" {
           PasswordAuthentication no
           X11Forwarding no
           MaxAuthTries 5
-      # Persist default route — survives DHCP renewals
-      - path: /etc/network/interfaces.d/60-default-route
+      # Persist default route via systemd-networkd (Hetzner Debian uses systemd-networkd, not ifupdown)
+      - path: /etc/systemd/network/10-private-route.network
         content: |
-          auto enp7s0
-          iface enp7s0 inet dhcp
-              post-up ip route add default via 10.0.0.1 dev enp7s0 metric 100 2>/dev/null || true
+          [Match]
+          Name=enp7s0
+
+          [Network]
+          DHCP=yes
+
+          [Route]
+          Gateway=10.0.0.1
+          Metric=100
     # bootcmd runs BEFORE everything — sets up route for package_update
     bootcmd:
       - |
@@ -61,6 +67,7 @@ resource "hcloud_server" "main" {
       - python3
       - curl
     runcmd:
+      - networkctl reload 2>/dev/null || systemctl restart systemd-networkd
       - systemctl restart sshd
       - echo "Cloud-init complete" > /var/log/cloud-init-done
   EOT
