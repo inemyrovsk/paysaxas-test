@@ -166,7 +166,7 @@
 # --- Backup: AWS credentials secret for CNPG ---
 
 - name: Ensure paysaxas namespace exists
-  ansible.builtin.command:
+  ansible.builtin.shell:
     cmd: kubectl create namespace paysaxas --dry-run=client -o yaml | kubectl apply -f -
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
