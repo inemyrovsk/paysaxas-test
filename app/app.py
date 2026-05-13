@@ -36,7 +36,6 @@ def ready():
     except Exception as e:
         return str(e), 503
 
-
 @app.route("/items", methods=["GET"])
 def list_items():
     conn = get_db()
