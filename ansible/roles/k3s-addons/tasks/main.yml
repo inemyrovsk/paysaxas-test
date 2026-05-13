@@ -68,6 +68,45 @@
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   changed_when: false
 
+# --- Hetzner Cloud Controller Manager ---
+
+- name: Create hcloud secret for CCM
+  ansible.builtin.shell:
+    cmd: |
+      kubectl create secret generic hcloud --namespace kube-system \
+        --from-literal=token="{{ hcloud_token }}" \
+        --from-literal=network="paysaxas-network" \
+        --dry-run=client -o yaml | kubectl apply -f -
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: false
+  no_log: true
+
+- name: Add Hetzner Cloud Helm repository
+  kubernetes.core.helm_repository:
+    name: hcloud
+    repo_url: https://charts.hetzner.cloud
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Install hcloud-cloud-controller-manager
+  kubernetes.core.helm:
+    name: hccm
+    chart_ref: hcloud/hcloud-cloud-controller-manager
+    release_namespace: kube-system
+    wait: true
+    timeout: "5m0s"
+    values:
+      networking:
+        enabled: true
+      env:
+        HCLOUD_LOAD_BALANCERS_USE_PRIVATE_IP:
+          value: "true"
+        HCLOUD_LOAD_BALANCERS_LOCATION:
+          value: "{{ hetzner_location }}"
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
 # --- cert-manager ---
 
 - name: Add Jetstack Helm repository

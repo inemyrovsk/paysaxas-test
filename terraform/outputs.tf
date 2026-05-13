@@ -8,10 +8,6 @@ output "server_private_ip" {
   value       = module.hetzner_compute.server_private_ip
 }
 
-output "lb_public_ip" {
-  description = "Public IP address of the Hetzner load balancer"
-  value       = module.hetzner_lb.lb_public_ip
-}
 
 output "s3_backup_bucket_name" {
   description = "Name of the S3 bucket for database backups"

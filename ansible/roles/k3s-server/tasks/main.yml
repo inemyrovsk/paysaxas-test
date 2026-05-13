@@ -25,8 +25,8 @@
   ansible.builtin.copy:
     dest: /etc/rancher/k3s/config.yaml
     content: |
-      tls-san:
-        - {{ lb_public_ip }}
+      kubelet-arg:
+        - cloud-provider=external
     owner: root
     group: root
     mode: "0600"
@@ -45,7 +45,6 @@
       --disable=traefik
       --disable=servicelb
       --secrets-encryption
-      --tls-san={{ lb_public_ip }}
       --node-ip={{ ansible_host }}
       --advertise-address={{ ansible_host }}
       --kube-apiserver-arg=anonymous-auth=false
@@ -74,35 +73,3 @@
     src: /etc/rancher/k3s/k3s.yaml
     dest: /tmp/kubeconfig
     flat: true
-
-- name: Update kubeconfig server address to LB public IP
-  ansible.builtin.lineinfile:
-    path: /tmp/kubeconfig
-    regexp: 'server: https://127.0.0.1:6443'
-    line: "    server: https://{{ lb_public_ip }}:6443"
-  delegate_to: localhost
-  become: false
-
-- name: Upload kubeconfig to AWS Secrets Manager
-  ansible.builtin.shell:
-    cmd: >
-      aws secretsmanager put-secret-value
-      --secret-id paysaxas/kubeconfig
-      --secret-string file:///tmp/kubeconfig
-      --region eu-central-1
-  delegate_to: localhost
-  become: false
-  register: sm_put
-  failed_when: false
-
-- name: Create kubeconfig secret if not exists
-  ansible.builtin.shell:
-    cmd: >
-      aws secretsmanager create-secret
-      --name paysaxas/kubeconfig
-      --description "K3s kubeconfig for paysaxas cluster"
-      --secret-string file:///tmp/kubeconfig
-      --region eu-central-1
-  delegate_to: localhost
-  become: false
-  when: sm_put.rc != 0

@@ -45,14 +45,8 @@ module "hetzner_firewall" {
   server_ids   = [module.hetzner_nat.nat_server_id]
 }
 
-module "hetzner_lb" {
-  source = "./modules/hetzner-lb"
-
-  project_name = local.project_name
-  location     = var.hetzner_location
-  subnet_id    = module.hetzner_network.app_subnet_id
-  server_id    = module.hetzner_compute.server_id
-}
+# Hetzner LB is managed by hcloud-cloud-controller-manager (hccm) in K3s.
+# Cilium Gateway API creates a LoadBalancer Service, hccm provisions the LB.
 
 # -----------------------------------------------------------------------------
 # AWS Infrastructure
@@ -90,7 +84,6 @@ resource "local_file" "ansible_inventory" {
   content = templatefile("${path.module}/../ansible/inventory.ini.tpl", {
     nat_ip    = module.hetzner_nat.nat_public_ip
     server_ip = module.hetzner_compute.server_private_ip
-    lb_ip     = module.hetzner_lb.lb_public_ip
   })
   filename = "${path.module}/../ansible/inventory.ini"
 }
