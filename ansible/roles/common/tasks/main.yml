@@ -1,8 +1,7 @@
 ---
-- name: Update apt cache
+- name: Force apt cache update
   ansible.builtin.apt:
     update_cache: true
-    cache_valid_time: 3600
 
 - name: Install essential packages
   ansible.builtin.apt:
@@ -10,10 +9,14 @@
       - curl
       - wget
       - ca-certificates
-      - fail2ban
-      - jq
-      - ufw
     state: present
+
+- name: Install fail2ban (may not be in minimal images)
+  ansible.builtin.apt:
+    name: fail2ban
+    state: present
+  ignore_errors: true
+  register: fail2ban_install
 
 - name: Configure systemd-timesyncd with Hetzner NTP
   ansible.builtin.copy:
@@ -37,6 +40,7 @@
     name: fail2ban
     state: started
     enabled: true
+  when: fail2ban_install is succeeded
 
 - name: Configure fail2ban SSH jail
   ansible.builtin.copy:
@@ -44,7 +48,7 @@
     content: |
       [sshd]
       enabled = true
-      port = ssh
+      port = 22022
       filter = sshd
       logpath = /var/log/auth.log
       maxretry = 5
@@ -54,3 +58,4 @@
     group: root
     mode: "0644"
   notify: Restart fail2ban
+  when: fail2ban_install is succeeded

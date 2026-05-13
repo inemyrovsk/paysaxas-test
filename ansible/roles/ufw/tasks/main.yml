@@ -2,6 +2,11 @@
 # Hetzner Cloud Firewall is the primary perimeter firewall.
 # UFW serves as defense-in-depth at the host level.
 
+- name: Install UFW
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+
 - name: Set UFW default deny incoming
   community.general.ufw:
     direction: incoming
@@ -12,10 +17,10 @@
     direction: outgoing
     default: allow
 
-- name: Allow SSH (22/tcp)
+- name: Allow SSH ({{ ssh_port }}/tcp)
   community.general.ufw:
     rule: allow
-    port: "22"
+    port: "{{ ssh_port }}"
     proto: tcp
 
 - name: Allow HTTP (80/tcp)
