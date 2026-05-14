@@ -203,13 +203,9 @@ DEPLOY_POLICY=$(jq -n \
         Resource: [$backup_bucket_arn, ($backup_bucket_arn + "/*")]
       },
       {
-        Sid: "S3CreateBackupBucket",
+        Sid: "S3CreateAndManageBuckets",
         Effect: "Allow",
-        Action: [
-          "s3:CreateBucket",
-          "s3:ListAllMyBuckets",
-          "s3:GetBucketLocation"
-        ],
+        Action: "s3:*",
         Resource: "*"
       },
       {

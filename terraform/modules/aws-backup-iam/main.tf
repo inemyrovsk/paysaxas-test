@@ -28,9 +28,7 @@ resource "aws_iam_user_policy" "backup" {
         ]
         Resource = [
           var.bucket_arn,
-          "${var.bucket_arn}/*",
-          var.etcd_bucket_arn,
-          "${var.etcd_bucket_arn}/*"
+          "${var.bucket_arn}/*"
         ]
       },
       {
