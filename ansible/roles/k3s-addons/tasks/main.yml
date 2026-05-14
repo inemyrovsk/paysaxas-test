@@ -180,6 +180,61 @@
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   changed_when: false
 
+# --- FluxCD ---
+
+- name: Install Flux CLI
+  ansible.builtin.shell:
+    cmd: curl -s https://fluxcd.io/install.sh | bash
+  args:
+    creates: /usr/local/bin/flux
+  changed_when: true
+
+- name: Check if Flux is bootstrapped
+  ansible.builtin.command:
+    cmd: flux check --pre
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: flux_check
+  changed_when: false
+  failed_when: false
+
+- name: Install Flux controllers
+  ansible.builtin.shell:
+    cmd: >
+      flux install
+      --components-extra=image-reflector-controller,image-automation-controller
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  when: flux_check.rc != 0
+  changed_when: true
+
+- name: Wait for Flux controllers
+  ansible.builtin.command:
+    cmd: >-
+      kubectl wait --for=condition=available deployment
+      -l app.kubernetes.io/part-of=flux
+      -n flux-system
+      --timeout=300s
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: false
+
+- name: Copy Flux manifests to server
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../flux/"
+    dest: /opt/flux-manifests/
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Apply Flux GitOps configuration
+  ansible.builtin.command:
+    cmd: kubectl apply -R -f /opt/flux-manifests/
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: flux_apply
+  changed_when: "'created' in flux_apply.stdout or 'configured' in flux_apply.stdout"
+
 # --- CloudNativePG ---
 
 - name: Add CloudNativePG Helm repository

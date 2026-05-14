@@ -1,0 +1,48 @@
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageRepository
+metadata:
+  name: paysaxas-app
+  namespace: flux-system
+spec:
+  image: ghcr.io/inemyrovsk/paysaxas-test/app
+  interval: 1m
+
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImagePolicy
+metadata:
+  name: paysaxas-app
+  namespace: flux-system
+spec:
+  imageRepositoryRef:
+    name: paysaxas-app
+  policy:
+    semver:
+      range: ">=0.1.0"
+
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageUpdateAutomation
+metadata:
+  name: paysaxas-app
+  namespace: flux-system
+spec:
+  interval: 1m
+  sourceRef:
+    kind: GitRepository
+    name: paysaxas
+  git:
+    checkout:
+      ref:
+        branch: main
+    commit:
+      author:
+        email: flux@paysaxas.io
+        name: Flux
+      messageTemplate: "chore: update app image to {{range .Changed.Changes}}{{.NewValue}}{{end}}"
+    push:
+      branch: main
+  update:
+    path: ./k8s
+    strategy: Setters

@@ -76,10 +76,11 @@ module "aws_backup" {
 module "aws_backup_iam" {
   source = "./modules/aws-backup-iam"
 
-  project_name = local.project_name
-  bucket_arn   = module.aws_backup.bucket_arn
-  kms_key_arn  = module.aws_kms.key_arn
-  common_tags  = local.common_tags
+  project_name    = local.project_name
+  bucket_arn      = module.aws_backup.bucket_arn
+  etcd_bucket_arn = module.aws_backup.etcd_bucket_arn
+  kms_key_arn     = module.aws_kms.key_arn
+  common_tags     = local.common_tags
 }
 
 # -----------------------------------------------------------------------------

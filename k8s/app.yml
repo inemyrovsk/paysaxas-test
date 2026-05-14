@@ -28,8 +28,7 @@ spec:
         runAsUser: 1000
       containers:
         - name: app
-          # will use gitops to change image tag
-          image: ghcr.io/inemyrovsk/paysaxas-test/app:latest
+          image: ghcr.io/inemyrovsk/paysaxas-test/app:latest # {"$imagepolicy": "flux-system:paysaxas-app"}
           ports:
             - containerPort: 5000
               protocol: TCP
