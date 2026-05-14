@@ -2,7 +2,7 @@ data "aws_caller_identity" "current" {}
 
 # K3s etcd snapshots bucket (no Object Lock — K3s S3 client doesn't support it)
 resource "aws_s3_bucket" "etcd" {
-  bucket = "${var.project_name}-etcd-snapshots-${data.aws_caller_identity.current.account_id}"
+  bucket = "${var.project_name}-etcd-${data.aws_caller_identity.current.account_id}"
 
   tags = merge(var.common_tags, {
     Name = "${var.project_name}-etcd-snapshots"
