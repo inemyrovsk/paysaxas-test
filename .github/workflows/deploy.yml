@@ -26,9 +26,6 @@ jobs:
       nat_ip: ${{ steps.tf-output.outputs.nat_ip }}
       server_ip: ${{ steps.tf-output.outputs.server_ip }}
       cp_lb_ip: ${{ steps.tf-output.outputs.cp_lb_ip }}
-      s3_backup_bucket: ${{ steps.tf-output.outputs.s3_backup_bucket }}
-      backup_access_key_id: ${{ steps.tf-output.outputs.backup_access_key_id }}
-      backup_secret_access_key: ${{ steps.tf-output.outputs.backup_secret_access_key }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -103,13 +100,6 @@ jobs:
           echo "nat_ip=$(terraform output -raw nat_public_ip)" >> "$GITHUB_OUTPUT"
           echo "server_ip=$(terraform output -raw server_private_ip)" >> "$GITHUB_OUTPUT"
           echo "cp_lb_ip=$(terraform output -raw cp_lb_public_ip)" >> "$GITHUB_OUTPUT"
-          echo "s3_backup_bucket=$(terraform output -raw s3_backup_bucket_name)" >> "$GITHUB_OUTPUT"
-          BACKUP_KEY=$(terraform output -raw backup_access_key_id)
-          BACKUP_SECRET=$(terraform output -raw backup_secret_access_key)
-          echo "::add-mask::$BACKUP_KEY"
-          echo "::add-mask::$BACKUP_SECRET"
-          echo "backup_access_key_id=$BACKUP_KEY" >> "$GITHUB_OUTPUT"
-          echo "backup_secret_access_key=$BACKUP_SECRET" >> "$GITHUB_OUTPUT"
 
   configure:
     name: Ansible Configure
@@ -128,6 +118,7 @@ jobs:
       - name: Fetch secrets and write SSH keys
         id: secrets
         run: |
+          # Infrastructure secrets (SSH keys, HCLOUD_TOKEN)
           SECRET_JSON=$(aws secretsmanager get-secret-value \
             --secret-id "$SECRET_NAME" \
             --query SecretString \
@@ -139,6 +130,15 @@ jobs:
           echo "$SECRET_JSON" | jq -r .ssh_private_key > ~/.ssh/paysaxas
           echo "$SECRET_JSON" | jq -r .ssh_public_key > ~/.ssh/paysaxas.pub
           chmod 600 ~/.ssh/paysaxas
+
+          # Backup credentials (IAM keys for CNPG + K3s etcd)
+          BACKUP_JSON=$(aws secretsmanager get-secret-value \
+            --secret-id paysaxas/backup \
+            --query SecretString \
+            --output text)
+          echo "backup_access_key_id=$(echo "$BACKUP_JSON" | jq -r .access_key_id)" >> "$GITHUB_OUTPUT"
+          echo "backup_secret_access_key=$(echo "$BACKUP_JSON" | jq -r .secret_access_key)" >> "$GITHUB_OUTPUT"
+          echo "s3_backup_bucket=$(echo "$BACKUP_JSON" | jq -r .s3_bucket)" >> "$GITHUB_OUTPUT"
 
       - name: Install Ansible
         run: |
@@ -198,9 +198,9 @@ jobs:
             -i ansible/inventory.ini \
             ansible/site.yml \
             -e "hcloud_token=${{ steps.secrets.outputs.hcloud_token }}" \
-            -e "s3_backup_bucket=${{ needs.terraform.outputs.s3_backup_bucket }}" \
-            -e "backup_access_key_id=${{ needs.terraform.outputs.backup_access_key_id }}" \
-            -e "backup_secret_access_key=${{ needs.terraform.outputs.backup_secret_access_key }}"
+            -e "s3_backup_bucket=${{ steps.secrets.outputs.s3_backup_bucket }}" \
+            -e "backup_access_key_id=${{ steps.secrets.outputs.backup_access_key_id }}" \
+            -e "backup_secret_access_key=${{ steps.secrets.outputs.backup_secret_access_key }}"
         env:
           ANSIBLE_HOST_KEY_CHECKING: "false"
 

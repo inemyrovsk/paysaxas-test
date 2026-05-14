@@ -83,6 +83,25 @@ module "aws_backup_iam" {
 }
 
 # -----------------------------------------------------------------------------
+# Store backup credentials in Secrets Manager (CI reads them from here)
+# -----------------------------------------------------------------------------
+
+resource "aws_secretsmanager_secret" "backup" {
+  name        = "${local.project_name}/backup"
+  description = "Backup IAM credentials for CNPG and K3s etcd snapshots"
+  tags        = local.common_tags
+}
+
+resource "aws_secretsmanager_secret_version" "backup" {
+  secret_id = aws_secretsmanager_secret.backup.id
+  secret_string = jsonencode({
+    access_key_id     = module.aws_backup_iam.access_key_id
+    secret_access_key = module.aws_backup_iam.secret_access_key
+    s3_bucket         = module.aws_backup.bucket_name
+  })
+}
+
+# -----------------------------------------------------------------------------
 # Ansible Inventory
 # -----------------------------------------------------------------------------
 
