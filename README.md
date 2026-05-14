@@ -50,7 +50,9 @@ This creates:
 - GitHub OIDC provider + IAM role for CI/CD
 - `terraform/backend.hcl` for local Terraform init
 
-At the end it prints the IAM role ARN.
+At the end it prints the IAM role ARN. The `paysaxas/infrastructure` secret in AWS Secrets Manager should contain these keys:
+
+![Secrets Manager Infrastructure](static/secrets-manager-infra.png)
 
 ## Step 3: Add GitHub token to Secrets Manager
 
@@ -82,100 +84,23 @@ Go to your GitHub repo → Settings → Secrets and variables → Actions → Ne
 
 ![GitHub Actions Secret](static/github-actions-secret.png)
 
-## Step 5: Provision infrastructure
-
-**Option A: Via CI/CD (recommended)**
+## Step 5: Deploy
 
 Push to main — the deploy workflow runs automatically:
 
 1. Terraform provisions Hetzner servers, network, LB, and AWS resources (S3, KMS, IAM)
 2. Ansible configures K3s, Cilium, Envoy Gateway, CNPG, FluxCD, backups, autoscaler
 
-**Option B: Manually**
+## Step 6: Verify
 
 ```bash
-# Initialize Terraform
-terraform -chdir=terraform init -backend-config=backend.hcl
-
-# Review the plan
-terraform -chdir=terraform plan
-
-# Apply infrastructure
-terraform -chdir=terraform apply
-```
-
-Terraform outputs the NAT public IP, control plane LB IP, and generates `ansible/inventory.ini`.
-
-```bash
-# Copy SSH key to expected location
-bash -c '
-  aws secretsmanager get-secret-value --secret-id paysaxas/infrastructure \
-    --query SecretString --output text | jq -r .ssh_private_key > ~/.ssh/paysaxas
-  chmod 600 ~/.ssh/paysaxas
-  rm -f ~/.ssh/paysaxas.pub
-'
-
-# Run Ansible
-ANSIBLE_CONFIG=ansible/ansible.cfg ansible-playbook -i ansible/inventory.ini ansible/site.yml \
-  -e "hcloud_token=$HCLOUD_TOKEN" \
-  -e "backup_access_key_id=$(terraform -chdir=terraform output -raw backup_access_key_id)" \
-  -e "backup_secret_access_key=$(terraform -chdir=terraform output -raw backup_secret_access_key)" \
-  -e "s3_backup_bucket=$(terraform -chdir=terraform output -raw s3_backup_bucket_name)" \
-  -e "etcd_backup_bucket=$(terraform -chdir=terraform output -raw etcd_backup_bucket_name)" \
-  -e "github_token=ghp_YOUR_GITHUB_PAT"
-```
-
-## Step 6: Get kubeconfig
-
-```bash
-# Get IPs from Terraform
-NAT_IP=$(terraform -chdir=terraform output -raw nat_public_ip)
-CP_LB_IP=$(terraform -chdir=terraform output -raw cp_lb_public_ip)
-
-# Fetch kubeconfig via SSH through NAT
-ssh -i ~/.ssh/paysaxas -p 22022 \
-  -o StrictHostKeyChecking=no \
-  -o ProxyCommand="ssh -p 22022 -i ~/.ssh/paysaxas -o StrictHostKeyChecking=no -W %h:%p root@${NAT_IP}" \
-  root@10.0.2.2 "cat /etc/rancher/k3s/k3s.yaml" > kubeconfig.yaml
-
-# Point to control plane LB
-sed -i '' "s|https://127.0.0.1:6443|https://${CP_LB_IP}:6443|" kubeconfig.yaml
-
-# Test
-KUBECONFIG=./kubeconfig.yaml kubectl get nodes
-```
-
-## Step 7: Verify everything works
-
-```bash
-# Get ingress LB IP
-INGRESS_IP=$(KUBECONFIG=./kubeconfig.yaml kubectl get svc -n envoy-gateway-system \
-  -l gateway.envoyproxy.io/owning-gateway-name=paysaxas-gateway \
-  -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}')
-
-# App
-curl http://${INGRESS_IP}/
+# App should respond via ingress LB
+curl http://<INGRESS_LB_IP>/
 # → "App is running"
 
-curl http://${INGRESS_IP}/ready
-# → "ready"
-
 # Create and list items
-curl -X POST http://${INGRESS_IP}/items -H "Content-Type: application/json" -d '{"name":"hello"}'
-curl http://${INGRESS_IP}/items
-
-# All pods should be Running
-KUBECONFIG=./kubeconfig.yaml kubectl get pods -A
-
-# Database healthy
-KUBECONFIG=./kubeconfig.yaml kubectl get cluster -n paysaxas
-
-# Backups working
-KUBECONFIG=./kubeconfig.yaml kubectl get backup -n paysaxas
-
-# FluxCD synced
-KUBECONFIG=./kubeconfig.yaml kubectl get kustomizations -n flux-system
-KUBECONFIG=./kubeconfig.yaml kubectl get imagepolicy -n flux-system
+curl -X POST http://<INGRESS_LB_IP>/items -H "Content-Type: application/json" -d '{"name":"hello"}'
+curl http://<INGRESS_LB_IP>/items
 ```
 
 ## Tear down
