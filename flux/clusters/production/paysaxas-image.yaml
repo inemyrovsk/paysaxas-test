@@ -1,5 +1,5 @@
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: paysaxas-app
@@ -9,7 +9,7 @@ spec:
   interval: 5m
 
 ---
-apiVersion: image.toolkit.fluxcd.io/v1beta2
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
   name: paysaxas-app
@@ -19,7 +19,7 @@ spec:
     name: paysaxas-app
   policy:
     semver:
-      range: ">=0.1.0"
+      range: ">=0.0.1-0"
 
 ---
 apiVersion: image.toolkit.fluxcd.io/v1beta2
@@ -28,7 +28,7 @@ metadata:
   name: paysaxas-app
   namespace: flux-system
 spec:
-  interval: 1m
+  interval: 5m
   sourceRef:
     kind: GitRepository
     name: paysaxas
