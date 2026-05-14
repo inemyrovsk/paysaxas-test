@@ -88,9 +88,10 @@ module "aws_backup_iam" {
 # -----------------------------------------------------------------------------
 
 resource "aws_secretsmanager_secret" "backup" {
-  name        = "${local.project_name}/backup"
-  description = "Backup IAM credentials for CNPG and K3s etcd snapshots"
-  tags        = local.common_tags
+  name                    = "${local.project_name}/backup"
+  description             = "Backup IAM credentials for CNPG and K3s etcd snapshots"
+  recovery_window_in_days = 0
+  tags                    = local.common_tags
 }
 
 resource "aws_secretsmanager_secret_version" "backup" {
