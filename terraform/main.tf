@@ -101,9 +101,9 @@ resource "aws_secretsmanager_secret_version" "backup" {
     etcd_bucket       = module.aws_backup.etcd_bucket_name
   })
 
-  lifecycle {
-    ignore_changes = [secret_string]
-  }
+  # lifecycle {
+  #   ignore_changes = [secret_string]
+  # }
 }
 
 # -----------------------------------------------------------------------------

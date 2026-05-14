@@ -32,6 +32,7 @@ spec:
   backup:
     barmanObjectStore:
       destinationPath: "s3://{{ s3_backup_bucket }}/paysaxas-db/"
+      endpointURL: "https://s3.eu-central-1.amazonaws.com"
       s3Credentials:
         accessKeyId:
           name: aws-backup-creds

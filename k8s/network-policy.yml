@@ -107,7 +107,7 @@ spec:
               protocol: TCP
 
 ---
-# Allow CNPG pods egress to AWS S3 (port 443) for backups
+# Allow CNPG pods egress to internet (S3 backups on port 443)
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -120,11 +120,8 @@ spec:
     matchLabels:
       cnpg.io/cluster: paysaxas-db
   egress:
-    - toFQDNs:
-        - matchPattern: "*.s3.amazonaws.com"
-        - matchPattern: "*.s3.*.amazonaws.com"
-        - matchPattern: "s3.amazonaws.com"
-        - matchPattern: "s3.*.amazonaws.com"
+    - toEntities:
+        - world
       toPorts:
         - ports:
             - port: "443"
