@@ -1,4 +1,3 @@
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -28,7 +27,7 @@ spec:
         runAsUser: 1000
       containers:
         - name: app
-          image: ghcr.io/inemyrovsk/paysaxas-test/app:latest # {"$imagepolicy": "flux-system:paysaxas-app"}
+          image: ghcr.io/inemyrovsk/paysaxas-test/app:v0.0.1-45 # {"$imagepolicy": "flux-system:paysaxas-app"}
           ports:
             - containerPort: 5000
               protocol: TCP
@@ -76,7 +75,6 @@ spec:
               memory: 256Mi
           securityContext:
             readOnlyRootFilesystem: false
-
 ---
 apiVersion: v1
 kind: Service
