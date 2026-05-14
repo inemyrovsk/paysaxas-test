@@ -1,5 +1,0 @@
----
-- name: Restart k3s for etcd backup
-  ansible.builtin.systemd:
-    name: k3s
-    state: restarted

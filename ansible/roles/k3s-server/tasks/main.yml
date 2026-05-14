@@ -27,6 +27,7 @@
     content: |
       tls-san:
         - {{ lb_public_ip }}
+      cluster-init: true
       kubelet-arg:
         - cloud-provider=external
       disable-cloud-controller: true

@@ -303,6 +303,8 @@
     state: absent
 
 # --- Backup: K3s etcd snapshots to S3 ---
+# cluster-init: true in K3s config enables embedded etcd (same as kube-hetzner)
+# This allows native K3s etcd snapshot backup to S3.
 
 - name: Add etcd snapshot config to K3s config
   ansible.builtin.blockinfile:
@@ -322,4 +324,20 @@
     group: root
     mode: "0600"
   no_log: true
-  notify: Restart k3s for etcd backup
+  register: etcd_snapshot_config
+
+- name: Restart K3s to apply etcd snapshot config
+  ansible.builtin.systemd:
+    name: k3s
+    state: restarted
+  when: etcd_snapshot_config.changed
+
+- name: Wait for K3s API after etcd config change
+  ansible.builtin.shell:
+    cmd: curl -sk https://127.0.0.1:6443/readyz
+  register: k3s_readyz_etcd
+  retries: 30
+  delay: 10
+  until: k3s_readyz_etcd.stdout == "ok" or "Unauthorized" in k3s_readyz_etcd.stdout
+  changed_when: false
+  when: etcd_snapshot_config.changed
