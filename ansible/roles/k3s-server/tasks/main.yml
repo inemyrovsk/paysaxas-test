@@ -33,6 +33,20 @@
     owner: root
     group: root
     mode: "0600"
+  register: k3s_config
+
+- name: Check if K3s is already running
+  ansible.builtin.command:
+    cmd: systemctl is-active k3s
+  register: k3s_running
+  changed_when: false
+  failed_when: false
+
+- name: Restart K3s to apply config changes
+  ansible.builtin.systemd:
+    name: k3s
+    state: restarted
+  when: k3s_config.changed and k3s_running.rc == 0
 
 - name: Install K3s server
   ansible.builtin.command:
@@ -57,7 +71,7 @@
       --kube-apiserver-arg=audit-log-maxsize=100
   notify: Restart k3s
 
-- name: Wait for K3s to be ready
+- name: Wait for K3s API to respond
   ansible.builtin.command:
     cmd: k3s kubectl get nodes
   environment:
@@ -66,6 +80,15 @@
   retries: 30
   delay: 10
   until: k3s_ready.rc == 0
+  changed_when: false
+
+- name: Wait for K3s API to be fully ready
+  ansible.builtin.shell:
+    cmd: curl -sk https://127.0.0.1:6443/readyz
+  register: k3s_readyz
+  retries: 30
+  delay: 10
+  until: k3s_readyz.stdout == "ok" or "Unauthorized" in k3s_readyz.stdout
   changed_when: false
 
 # Node won't be Ready until Cilium CNI is installed (k3s-addons role).

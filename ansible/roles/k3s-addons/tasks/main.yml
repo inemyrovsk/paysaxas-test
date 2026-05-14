@@ -70,6 +70,24 @@
 
 # --- Hetzner Cloud Controller Manager ---
 
+- name: Verify K3s API is healthy before CCM install
+  ansible.builtin.shell:
+    cmd: curl -sk https://127.0.0.1:6443/readyz || curl -sk https://127.0.0.1:6443/healthz
+  register: api_health
+  retries: 30
+  delay: 10
+  until: api_health.stdout == "ok" or "Unauthorized" in api_health.stdout
+  changed_when: false
+
+- name: Verify port 10258 is free (K3s cloud controller disabled)
+  ansible.builtin.shell:
+    cmd: "! ss -tlnp | grep ':10258 '"
+  register: port_check
+  retries: 10
+  delay: 5
+  until: port_check.rc == 0
+  changed_when: false
+
 - name: Create hcloud secret for CCM
   ansible.builtin.shell:
     cmd: |
@@ -95,7 +113,7 @@
     chart_ref: hcloud/hcloud-cloud-controller-manager
     release_namespace: kube-system
     wait: true
-    timeout: "5m0s"
+    timeout: "10m0s"
     values:
       networking:
         enabled: true
