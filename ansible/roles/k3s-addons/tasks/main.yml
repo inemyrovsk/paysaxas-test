@@ -79,9 +79,9 @@
   until: api_health.stdout == "ok" or "Unauthorized" in api_health.stdout
   changed_when: false
 
-- name: Verify port 10258 is free (K3s cloud controller disabled)
+- name: Verify K3s built-in cloud controller is not using port 10258
   ansible.builtin.shell:
-    cmd: "! ss -tlnp | grep ':10258 '"
+    cmd: "! ss -tlnp | grep ':10258.*k3s'"
   register: port_check
   retries: 10
   delay: 5
@@ -117,6 +117,9 @@
     values:
       networking:
         enabled: true
+      secret:
+        create: false
+        name: hcloud
       env:
         HCLOUD_LOAD_BALANCERS_USE_PRIVATE_IP:
           value: "true"

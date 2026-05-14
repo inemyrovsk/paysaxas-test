@@ -248,12 +248,7 @@ DEPLOY_POLICY=$(jq -n \
         Sid: "SecretsManager",
         Effect: "Allow",
         Action: [
-          "secretsmanager:GetSecretValue",
-          "secretsmanager:PutSecretValue",
-          "secretsmanager:CreateSecret",
-          "secretsmanager:UpdateSecret",
-          "secretsmanager:DescribeSecret",
-          "secretsmanager:TagResource"
+          "secretsmanager:*"
         ],
         Resource: $secret_arn
       },
