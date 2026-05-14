@@ -312,7 +312,7 @@
     marker: "# {mark} ETCD SNAPSHOT CONFIG"
     block: |
       etcd-s3: true
-      etcd-s3-bucket: "{{ s3_backup_bucket }}"
+      etcd-s3-bucket: "{{ etcd_backup_bucket }}"
       etcd-s3-region: eu-central-1
       etcd-s3-folder: etcd/
       etcd-s3-access-key: "{{ backup_access_key_id }}"

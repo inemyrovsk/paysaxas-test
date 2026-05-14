@@ -97,3 +97,22 @@
     src: /etc/rancher/k3s/k3s.yaml
     dest: /tmp/kubeconfig
     flat: true
+
+- name: Update kubeconfig server address to CP LB IP
+  ansible.builtin.lineinfile:
+    path: /tmp/kubeconfig
+    regexp: 'server: https://127.0.0.1:6443'
+    line: "    server: https://{{ lb_public_ip }}:6443"
+  delegate_to: localhost
+  become: false
+
+- name: Upload kubeconfig to AWS Secrets Manager
+  ansible.builtin.shell:
+    cmd: >
+      aws secretsmanager put-secret-value
+      --secret-id paysaxas/kubeconfig
+      --secret-string file:///tmp/kubeconfig
+      --region eu-central-1
+  delegate_to: localhost
+  become: false
+  ignore_errors: true

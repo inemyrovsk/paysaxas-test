@@ -8,6 +8,11 @@ variable "bucket_arn" {
   type        = string
 }
 
+variable "etcd_bucket_arn" {
+  description = "ARN of the S3 etcd snapshots bucket"
+  type        = string
+}
+
 variable "kms_key_arn" {
   description = "ARN of the KMS key for backup encryption"
   type        = string

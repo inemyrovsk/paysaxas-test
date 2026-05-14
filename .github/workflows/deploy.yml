@@ -139,6 +139,7 @@ jobs:
           echo "backup_access_key_id=$(echo "$BACKUP_JSON" | jq -r .access_key_id)" >> "$GITHUB_OUTPUT"
           echo "backup_secret_access_key=$(echo "$BACKUP_JSON" | jq -r .secret_access_key)" >> "$GITHUB_OUTPUT"
           echo "s3_backup_bucket=$(echo "$BACKUP_JSON" | jq -r .s3_bucket)" >> "$GITHUB_OUTPUT"
+          echo "etcd_backup_bucket=$(echo "$BACKUP_JSON" | jq -r .etcd_bucket)" >> "$GITHUB_OUTPUT"
 
       - name: Install Ansible
         run: |
@@ -199,6 +200,7 @@ jobs:
             ansible/site.yml \
             -e "hcloud_token=${{ steps.secrets.outputs.hcloud_token }}" \
             -e "s3_backup_bucket=${{ steps.secrets.outputs.s3_backup_bucket }}" \
+            -e "etcd_backup_bucket=${{ steps.secrets.outputs.etcd_backup_bucket }}" \
             -e "backup_access_key_id=${{ steps.secrets.outputs.backup_access_key_id }}" \
             -e "backup_secret_access_key=${{ steps.secrets.outputs.backup_secret_access_key }}"
         env:
