@@ -11,6 +11,9 @@ cnpg_version: "0.28.2"
 # cert-manager
 certmanager_version: "v1.20.2"
 
+# Envoy Gateway
+envoy_gateway_version: "v1.8.0"
+
 # Cluster Autoscaler
 autoscaler_server_type: "cpx32"
 hetzner_location: "nbg1"

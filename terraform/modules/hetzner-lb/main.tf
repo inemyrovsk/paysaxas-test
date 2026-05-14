@@ -9,7 +9,7 @@ resource "hcloud_load_balancer_network" "main" {
   subnet_id        = var.subnet_id
 }
 
-# HTTP - forward to Cilium Gateway API NodePort
+# HTTP - TCP passthrough to Envoy Gateway NodePort
 resource "hcloud_load_balancer_service" "http" {
   load_balancer_id = hcloud_load_balancer.main.id
   protocol         = "tcp"
@@ -25,7 +25,7 @@ resource "hcloud_load_balancer_service" "http" {
   }
 }
 
-# HTTPS - forward to Cilium Gateway API NodePort (TLS terminated at Cilium)
+# HTTPS - TCP passthrough to Envoy Gateway NodePort
 resource "hcloud_load_balancer_service" "https" {
   load_balancer_id = hcloud_load_balancer.main.id
   protocol         = "tcp"
@@ -41,7 +41,7 @@ resource "hcloud_load_balancer_service" "https" {
   }
 }
 
-# K8s API - TCP passthrough for kubectl access via LB
+# K8s API - TCP passthrough for kubectl access
 resource "hcloud_load_balancer_service" "k8s_api" {
   load_balancer_id = hcloud_load_balancer.main.id
   protocol         = "tcp"

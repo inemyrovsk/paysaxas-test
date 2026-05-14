@@ -25,8 +25,11 @@
   ansible.builtin.copy:
     dest: /etc/rancher/k3s/config.yaml
     content: |
+      tls-san:
+        - {{ lb_public_ip }}
       kubelet-arg:
         - cloud-provider=external
+      disable-cloud-controller: true
     owner: root
     group: root
     mode: "0600"

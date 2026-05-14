@@ -7,24 +7,6 @@
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   tasks:
-    - name: Install Gateway API CRDs
-      ansible.builtin.command:
-        cmd: kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.1/config/crd/standard/gateway.networking.k8s.io_gatewayclasses.yaml
-      register: gw_crds
-      changed_when: "'created' in gw_crds.stdout or 'configured' in gw_crds.stdout"
-
-    - name: Install Gateway API HTTPRoute CRD
-      ansible.builtin.command:
-        cmd: kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.1/config/crd/standard/gateway.networking.k8s.io_httproutes.yaml
-      register: hr_crds
-      changed_when: "'created' in hr_crds.stdout or 'configured' in hr_crds.stdout"
-
-    - name: Install Gateway API Gateway CRD
-      ansible.builtin.command:
-        cmd: kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.2.1/config/crd/standard/gateway.networking.k8s.io_gateways.yaml
-      register: gw_crd
-      changed_when: "'created' in gw_crd.stdout or 'configured' in gw_crd.stdout"
-
     - name: Create manifests directory on server
       ansible.builtin.file:
         path: /opt/k8s-manifests
@@ -52,3 +34,28 @@
         cmd: kubectl apply -R -f /opt/k8s-manifests/
       register: kubectl_apply
       changed_when: "'created' in kubectl_apply.stdout or 'configured' in kubectl_apply.stdout"
+
+    - name: Wait for Envoy Gateway proxy service
+      ansible.builtin.shell:
+        cmd: |
+          for i in $(seq 1 30); do
+            kubectl get svc -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=paysaxas-gateway 2>/dev/null | grep -q LoadBalancer && break
+            sleep 5
+          done
+          kubectl get svc -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=paysaxas-gateway -o name
+      register: envoy_svc
+      changed_when: false
+
+    - name: Patch Envoy Gateway proxy to fixed NodePorts
+      ansible.builtin.shell:
+        cmd: |
+          SVC=$(kubectl get svc -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=paysaxas-gateway -o jsonpath='{.items[0].metadata.name}')
+          kubectl patch svc "$SVC" -n envoy-gateway-system --type='json' -p='[
+            {"op": "replace", "path": "/spec/ports/0/nodePort", "value": 30080},
+            {"op": "replace", "path": "/spec/ports/1/nodePort", "value": 30443}
+          ]' 2>/dev/null || \
+          kubectl patch svc "$SVC" -n envoy-gateway-system --type='json' -p='[
+            {"op": "replace", "path": "/spec/ports/0/nodePort", "value": 30080}
+          ]'
+      when: envoy_svc.stdout != ""
+      changed_when: true

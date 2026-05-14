@@ -45,7 +45,7 @@
       encryption:
         type: wireguard
       gatewayAPI:
-        enabled: true
+        enabled: false
       hubble:
         enabled: true
         relay:
@@ -130,6 +130,30 @@
         enabled: true
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+# --- Envoy Gateway ---
+
+- name: Install Envoy Gateway
+  kubernetes.core.helm:
+    name: eg
+    chart_ref: oci://docker.io/envoyproxy/gateway-helm
+    chart_version: "{{ envoy_gateway_version }}"
+    release_namespace: envoy-gateway-system
+    create_namespace: true
+    wait: true
+    timeout: "5m0s"
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Wait for Envoy Gateway to be ready
+  ansible.builtin.command:
+    cmd: >-
+      kubectl wait --for=condition=available deployment/envoy-gateway
+      -n envoy-gateway-system
+      --timeout=300s
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: false
 
 # --- CloudNativePG ---
 

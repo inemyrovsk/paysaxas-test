@@ -1,5 +1,13 @@
 ---
 apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: envoy-gateway
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+
+---
+apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: paysaxas-gateway
@@ -8,7 +16,7 @@ metadata:
     app.kubernetes.io/name: paysaxas-gateway
     app.kubernetes.io/part-of: paysaxas
 spec:
-  gatewayClassName: cilium
+  gatewayClassName: envoy-gateway
   listeners:
     - name: http
       protocol: HTTP
@@ -16,18 +24,6 @@ spec:
       allowedRoutes:
         namespaces:
           from: Same
-    # TODO: Add HTTPS listener with cert-manager TLS certificate
-    # - name: https
-    #   protocol: HTTPS
-    #   port: 443
-    #   tls:
-    #     mode: Terminate
-    #     certificateRefs:
-    #       - kind: Secret
-    #         name: paysaxas-tls
-    #   allowedRoutes:
-    #     namespaces:
-    #       from: Same
 
 ---
 apiVersion: gateway.networking.k8s.io/v1
