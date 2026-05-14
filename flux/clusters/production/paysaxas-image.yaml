@@ -40,7 +40,7 @@ spec:
       author:
         email: flux@paysaxas.io
         name: Flux
-      messageTemplate: "chore: update app image to {{range .Changed.Changes}}{{.NewValue}}{{end}}"
+      messageTemplate: "chore: update app image to {{range .Changed.Changes}}{{.NewValue}}{{end}} [skip ci]"
     push:
       branch: main
   update:
