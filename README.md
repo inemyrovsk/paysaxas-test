@@ -4,49 +4,6 @@
 
 [Source (draw.io)](https://drive.google.com/file/d/1y9o9V7z7Dp4jGZNiilQpbyGc_OpS0OT-/view?usp=sharing)
 
-## Architecture overview
-
-```
-                         Internet
-                            │
-              ┌─────────────┼─────────────┐
-              │             │             │
-    ┌─────────▼──────┐  ┌──▼──────────┐  │
-    │ Control Plane  │  │  Ingress    │  │
-    │ LB (Terraform) │  │  LB (CCM)  │  │
-    │ :6443 only     │  │  :80/:443  │  │
-    └────────┬───────┘  └──┬──────────┘  │
-             │             │             │
-    ╔════════╪═════════════╪═════════════╪══╗
-    ║  Hetzner Private Network 10.0.0.0/16  ║
-    ║                                        ║
-    ║  ┌─ Public 10.0.1.0/24 ────────────┐  ║
-    ║  │  NAT Gateway (cx23, Debian 12)  │  ║
-    ║  │  Only server with public IP     │◄─╫── SSH :22022
-    ║  │  iptables MASQUERADE            │  ║
-    ║  └─────────────┬──────────────────┘  ║
-    ║                │                      ║
-    ║  ┌─ App 10.0.2.0/24 ──────────────┐  ║
-    ║  │  K3s Server (cpx32, Debian 12) │  ║
-    ║  │  NO public IP                   │  ║
-    ║  │  Cilium + Envoy Gateway         │  ║
-    ║  │  CloudNativePG + App pods       │  ║
-    ║  └────────────────────────────────┘  ║
-    ║                                        ║
-    ║  ┌─ DB 10.0.3.0/24 ───────────────┐  ║
-    ║  │  Reserved for future DB server  │  ║
-    ║  └────────────────────────────────┘  ║
-    ╚════════════════════════════════════════╝
-
-    AWS (eu-central-1)
-    ├── S3 — DB backups (Object Lock, KMS, lifecycle)
-    ├── S3 — K3s etcd snapshots (separate bucket, no Object Lock)
-    ├── KMS — encryption key for backups
-    ├── Secrets Manager — SSH keys, HCLOUD_TOKEN, backup credentials
-    ├── IAM OIDC — GitHub Actions federation
-    └── S3 + DynamoDB — Terraform state
-```
-
 ## Workload split
 
 I put all compute on a single Hetzner server and used AWS only for managed services. The reason is simple - Hetzner is 3-5x cheaper for compute (~€8/mo vs ~$280/mo on pure AWS for comparable specs), and cross-cloud DB latency would be terrible if I split the DB to AWS. AWS is used for what it does best: S3 for backups with Object Lock, KMS for encryption, IAM for zero-credential CI/CD.
