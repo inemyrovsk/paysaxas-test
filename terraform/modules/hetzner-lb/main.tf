@@ -19,15 +19,8 @@ resource "hcloud_load_balancer_service" "k8s_api" {
   destination_port = 6443
 
   health_check {
-    protocol = "https"
+    protocol = "tcp"
     port     = 6443
-
-    http {
-      path         = "/readyz"
-      tls          = true
-      status_codes = ["200", "401"]
-    }
-
     interval = 15
     timeout  = 10
     retries  = 3
