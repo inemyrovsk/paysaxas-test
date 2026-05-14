@@ -189,12 +189,12 @@
     creates: /usr/local/bin/flux
   changed_when: true
 
-- name: Check if Flux is bootstrapped
+- name: Check if Flux is installed
   ansible.builtin.command:
-    cmd: flux check --pre
+    cmd: kubectl get namespace flux-system
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  register: flux_check
+  register: flux_ns_check
   changed_when: false
   failed_when: false
 
@@ -205,7 +205,7 @@
       --components-extra=image-reflector-controller,image-automation-controller
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  when: flux_check.rc != 0
+  when: flux_ns_check.rc != 0
   changed_when: true
 
 - name: Wait for Flux controllers

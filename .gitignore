@@ -10,6 +10,7 @@ override.tf.json
 *_override.tf
 *_override.tf.json
 .terraform.lock.hcl
+terraform/paysaxas.pub
 
 # Ansible
 *.retry
@@ -19,6 +20,18 @@ ansible/inventory.ini
 *.pem
 *.key
 .env
+kubeconfig*.yaml
+kubeconfig
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/
 
 # OS
 .DS_Store
