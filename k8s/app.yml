@@ -27,7 +27,7 @@ spec:
         runAsUser: 1000
       containers:
         - name: app
-          image: ghcr.io/inemyrovsk/paysaxas-test/app:v0.0.1-49 # {"$imagepolicy": "flux-system:paysaxas-app"}
+          image: ghcr.io/inemyrovsk/paysaxas-test/app:v0.0.1-52 # {"$imagepolicy": "flux-system:paysaxas-app"}
           ports:
             - containerPort: 5000
               protocol: TCP
