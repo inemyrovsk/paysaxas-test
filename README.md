@@ -4,6 +4,190 @@
 
 [Source (draw.io)](https://drive.google.com/file/d/1y9o9V7z7Dp4jGZNiilQpbyGc_OpS0OT-/view?usp=sharing)
 
+# Setup from scratch
+
+## Prerequisites
+
+You need these tools installed locally:
+
+- **AWS CLI v2** — `brew install awscli` or [aws.amazon.com/cli](https://aws.amazon.com/cli/)
+- **Terraform** >= 1.10 — `brew install terraform`
+- **Ansible** core >= 2.17 — `brew install ansible` or `pip install ansible-core`
+- **kubectl** — `brew install kubectl`
+- **jq** — `brew install jq`
+
+You also need:
+
+- An **AWS account** with IAM user or SSO profile configured in aws-vault
+- A **Hetzner Cloud** account with an API token (Console → Security → API Tokens → Generate API token with Read & Write permissions)
+
+![Hetzner API Token](static/hetzner-api-token.png)
+
+- A **GitHub** account (the repo must be pushed to GitHub for CI/CD and FluxCD)
+- A **GitHub Personal Access Token** with `repo` scope (Settings → Developer Settings → Tokens → Generate) — for FluxCD image automation
+
+## Step 1: Clone and configure
+
+```bash
+git clone https://github.com/inemyrovsk/paysaxas-test.git
+cd paysaxas-test
+```
+
+## Step 2: Run bootstrap
+
+The bootstrap script creates all AWS prerequisites and generates an SSH key pair. It's fully idempotent — safe to run multiple times.
+
+```bash
+export HCLOUD_TOKEN="your-hetzner-cloud-api-token"
+./scripts/bootstrap.sh
+```
+
+This creates:
+
+- S3 bucket for Terraform state (versioned, KMS-encrypted)
+- DynamoDB table for state locking
+- SSH key pair stored in AWS Secrets Manager (`paysaxas/infrastructure`)
+- GitHub OIDC provider + IAM role for CI/CD
+- `terraform/backend.hcl` for local Terraform init
+
+At the end it prints the IAM role ARN.
+
+## Step 3: Add GitHub token to Secrets Manager
+
+FluxCD needs a GitHub Personal Access Token to auto-commit image tag updates.
+
+1. Go to [github.com/settings/tokens/new](https://github.com/settings/tokens/new)
+2. Set note to `paysaxas`, expiration as needed
+3. Select the **`repo`** scope (full control of private repositories)
+
+![GitHub PAT scope](static/github-pat-scope.png)
+
+4. Click **Generate token** and copy the value
+5. Add it to AWS Secrets Manager:
+
+```bash
+bash -c '
+  SECRET=$(aws secretsmanager get-secret-value --secret-id paysaxas/infrastructure --query SecretString --output text)
+  NEW=$(echo "$SECRET" | jq --arg token "ghp_YOUR_GITHUB_PAT" ".github_token = \$token")
+  aws secretsmanager put-secret-value --secret-id paysaxas/infrastructure --secret-string "$NEW"
+'
+```
+
+## Step 4: Set GitHub Actions secret
+
+Go to your GitHub repo → Settings → Secrets and variables → Actions → New repository secret:
+
+- Name: `AWS_DEPLOY_ROLE_ARN`
+- Value: the ARN printed at the end of bootstrap (e.g. `arn:aws:iam::123456789:role/paysaxas-github-deploy`)
+
+![GitHub Actions Secret](static/github-actions-secret.png)
+
+## Step 5: Provision infrastructure
+
+**Option A: Via CI/CD (recommended)**
+
+Push to main — the deploy workflow runs automatically:
+
+1. Terraform provisions Hetzner servers, network, LB, and AWS resources (S3, KMS, IAM)
+2. Ansible configures K3s, Cilium, Envoy Gateway, CNPG, FluxCD, backups, autoscaler
+
+**Option B: Manually**
+
+```bash
+# Initialize Terraform
+terraform -chdir=terraform init -backend-config=backend.hcl
+
+# Review the plan
+terraform -chdir=terraform plan
+
+# Apply infrastructure
+terraform -chdir=terraform apply
+```
+
+Terraform outputs the NAT public IP, control plane LB IP, and generates `ansible/inventory.ini`.
+
+```bash
+# Copy SSH key to expected location
+bash -c '
+  aws secretsmanager get-secret-value --secret-id paysaxas/infrastructure \
+    --query SecretString --output text | jq -r .ssh_private_key > ~/.ssh/paysaxas
+  chmod 600 ~/.ssh/paysaxas
+  rm -f ~/.ssh/paysaxas.pub
+'
+
+# Run Ansible
+ANSIBLE_CONFIG=ansible/ansible.cfg ansible-playbook -i ansible/inventory.ini ansible/site.yml \
+  -e "hcloud_token=$HCLOUD_TOKEN" \
+  -e "backup_access_key_id=$(terraform -chdir=terraform output -raw backup_access_key_id)" \
+  -e "backup_secret_access_key=$(terraform -chdir=terraform output -raw backup_secret_access_key)" \
+  -e "s3_backup_bucket=$(terraform -chdir=terraform output -raw s3_backup_bucket_name)" \
+  -e "etcd_backup_bucket=$(terraform -chdir=terraform output -raw etcd_backup_bucket_name)" \
+  -e "github_token=ghp_YOUR_GITHUB_PAT"
+```
+
+## Step 6: Get kubeconfig
+
+```bash
+# Get IPs from Terraform
+NAT_IP=$(terraform -chdir=terraform output -raw nat_public_ip)
+CP_LB_IP=$(terraform -chdir=terraform output -raw cp_lb_public_ip)
+
+# Fetch kubeconfig via SSH through NAT
+ssh -i ~/.ssh/paysaxas -p 22022 \
+  -o StrictHostKeyChecking=no \
+  -o ProxyCommand="ssh -p 22022 -i ~/.ssh/paysaxas -o StrictHostKeyChecking=no -W %h:%p root@${NAT_IP}" \
+  root@10.0.2.2 "cat /etc/rancher/k3s/k3s.yaml" > kubeconfig.yaml
+
+# Point to control plane LB
+sed -i '' "s|https://127.0.0.1:6443|https://${CP_LB_IP}:6443|" kubeconfig.yaml
+
+# Test
+KUBECONFIG=./kubeconfig.yaml kubectl get nodes
+```
+
+## Step 7: Verify everything works
+
+```bash
+# Get ingress LB IP
+INGRESS_IP=$(KUBECONFIG=./kubeconfig.yaml kubectl get svc -n envoy-gateway-system \
+  -l gateway.envoyproxy.io/owning-gateway-name=paysaxas-gateway \
+  -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}')
+
+# App
+curl http://${INGRESS_IP}/
+# → "App is running"
+
+curl http://${INGRESS_IP}/ready
+# → "ready"
+
+# Create and list items
+curl -X POST http://${INGRESS_IP}/items -H "Content-Type: application/json" -d '{"name":"hello"}'
+curl http://${INGRESS_IP}/items
+
+# All pods should be Running
+KUBECONFIG=./kubeconfig.yaml kubectl get pods -A
+
+# Database healthy
+KUBECONFIG=./kubeconfig.yaml kubectl get cluster -n paysaxas
+
+# Backups working
+KUBECONFIG=./kubeconfig.yaml kubectl get backup -n paysaxas
+
+# FluxCD synced
+KUBECONFIG=./kubeconfig.yaml kubectl get kustomizations -n flux-system
+KUBECONFIG=./kubeconfig.yaml kubectl get imagepolicy -n flux-system
+```
+
+## Tear down
+
+```bash
+terraform -chdir=terraform destroy
+```
+
+Note: the hcloud-ccm-managed ingress LB is created by Kubernetes, not Terraform. Delete it manually from Hetzner Console if it persists after destroy.
+
+---
+
 ## Workload split
 
 I put all compute on a single Hetzner server and used AWS only for managed services. The reason is simple - Hetzner is 3-5x cheaper for compute (~€8/mo vs ~$280/mo on pure AWS for comparable specs), and cross-cloud DB latency would be terrible if I split the DB to AWS. AWS is used for what it does best: S3 for backups with Object Lock, KMS for encryption, IAM for zero-credential CI/CD.
@@ -203,188 +387,6 @@ The `scripts/bootstrap.sh` creates all prerequisites:
 Using the official Kubernetes Cluster Autoscaler with Hetzner cloud provider. It can scale from 0 to 3 worker nodes based on pod scheduling pressure. Workers auto-join the K3s cluster via cloud-init with the node token.
 
 Karpenter was my first choice but it doesn't support Hetzner Cloud — it only has a first-class AWS provider.
-
-# Setup from scratch
-
-## Prerequisites
-
-You need these tools installed locally:
-
-- **AWS CLI v2** — `brew install awscli` or [aws.amazon.com/cli](https://aws.amazon.com/cli/)
-- **Terraform** >= 1.10 — `brew install terraform`
-- **Ansible** core >= 2.17 — `brew install ansible` or `pip install ansible-core`
-- **kubectl** — `brew install kubectl`
-- **jq** — `brew install jq`
-
-You also need:
-
-- An **AWS account** with IAM user or SSO profile configured in aws-vault
-- A **Hetzner Cloud** account with an API token (Console → Security → API Tokens → Generate API token with Read & Write permissions)
-
-Hetzner API Token
-
-- A **GitHub** account (the repo must be pushed to GitHub for CI/CD and FluxCD)
-- A **GitHub Personal Access Token** with `repo` scope (Settings → Developer Settings → Tokens → Generate) — for FluxCD image automation
-
-## Step 1: Clone and configure
-
-```bash
-git clone https://github.com/inemyrovsk/paysaxas-test.git
-cd paysaxas-test
-```
-
-## Step 2: Run bootstrap
-
-The bootstrap script creates all AWS prerequisites and generates an SSH key pair. It's fully idempotent — safe to run multiple times.
-
-```bash
-export HCLOUD_TOKEN="your-hetzner-cloud-api-token"
-./scripts/bootstrap.sh
-```
-
-This creates:
-
-- S3 bucket for Terraform state (versioned, KMS-encrypted)
-- DynamoDB table for state locking
-- SSH key pair stored in AWS Secrets Manager (`paysaxas/infrastructure`)
-- GitHub OIDC provider + IAM role for CI/CD
-- `terraform/backend.hcl` for local Terraform init
-
-At the end it prints the IAM role ARN.
-
-## Step 3: Add GitHub token to Secrets Manager
-
-FluxCD needs a GitHub Personal Access Token to auto-commit image tag updates.
-
-1. Go to [github.com/settings/tokens/new](https://github.com/settings/tokens/new)
-2. Set note to `paysaxas`, expiration as needed
-3. Select the `**repo**` scope (full control of private repositories)
-
-GitHub PAT scope
-
-1. Click **Generate token** and copy the value
-2. Add it to AWS Secrets Manager:
-
-```bash
-bash -c '
-  SECRET=$(aws secretsmanager get-secret-value --secret-id paysaxas/infrastructure --query SecretString --output text)
-  NEW=$(echo "$SECRET" | jq --arg token "ghp_YOUR_GITHUB_PAT" ".github_token = \$token")
-  aws secretsmanager put-secret-value --secret-id paysaxas/infrastructure --secret-string "$NEW"
-'
-```
-
-## Step 4: Set GitHub Actions secret
-
-Go to your GitHub repo → Settings → Secrets and variables → Actions → New repository secret:
-
-- Name: `AWS_DEPLOY_ROLE_ARN`
-- Value: the ARN printed at the end of bootstrap (e.g. `arn:aws:iam::123456789:role/paysaxas-github-deploy`)
-
-GitHub Actions Secret
-
-## Step 5: Provision infrastructure
-
-**Option A: Via CI/CD (recommended)**
-
-Push to main — the deploy workflow runs automatically:
-
-1. Terraform provisions Hetzner servers, network, LB, and AWS resources (S3, KMS, IAM)
-2. Ansible configures K3s, Cilium, Envoy Gateway, CNPG, FluxCD, backups, autoscaler
-
-**Option B: Manually**
-
-```bash
-# Initialize Terraform
-terraform -chdir=terraform init -backend-config=backend.hcl
-
-# Review the plan
-terraform -chdir=terraform plan
-
-# Apply infrastructure
-terraform -chdir=terraform apply
-```
-
-Terraform outputs the NAT public IP, control plane LB IP, and generates `ansible/inventory.ini`.
-
-```bash
-# Copy SSH key to expected location
-bash -c '
-  aws secretsmanager get-secret-value --secret-id paysaxas/infrastructure \
-    --query SecretString --output text | jq -r .ssh_private_key > ~/.ssh/paysaxas
-  chmod 600 ~/.ssh/paysaxas
-  rm -f ~/.ssh/paysaxas.pub
-'
-
-# Run Ansible
-ANSIBLE_CONFIG=ansible/ansible.cfg ansible-playbook -i ansible/inventory.ini ansible/site.yml \
-  -e "hcloud_token=$HCLOUD_TOKEN" \
-  -e "backup_access_key_id=$(aws-vault exec your-profile --no-session -- terraform -chdir=terraform output -raw backup_access_key_id)" \
-  -e "backup_secret_access_key=$(aws-vault exec your-profile --no-session -- terraform -chdir=terraform output -raw backup_secret_access_key)" \
-  -e "s3_backup_bucket=$(aws-vault exec your-profile --no-session -- terraform -chdir=terraform output -raw s3_backup_bucket_name)" \
-  -e "etcd_backup_bucket=$(aws-vault exec your-profile --no-session -- terraform -chdir=terraform output -raw etcd_backup_bucket_name)" \
-  -e "github_token=ghp_YOUR_GITHUB_PAT"
-```
-
-## Step 6: Get kubeconfig
-
-```bash
-# Get IPs from Terraform
-NAT_IP=$(aws-vault exec your-profile --no-session -- terraform -chdir=terraform output -raw nat_public_ip)
-CP_LB_IP=$(aws-vault exec your-profile --no-session -- terraform -chdir=terraform output -raw cp_lb_public_ip)
-
-# Fetch kubeconfig via SSH through NAT
-ssh -i ~/.ssh/paysaxas -p 22022 \
-  -o StrictHostKeyChecking=no \
-  -o ProxyCommand="ssh -p 22022 -i ~/.ssh/paysaxas -o StrictHostKeyChecking=no -W %h:%p root@${NAT_IP}" \
-  root@10.0.2.2 "cat /etc/rancher/k3s/k3s.yaml" > kubeconfig.yaml
-
-# Point to control plane LB
-sed -i '' "s|https://127.0.0.1:6443|https://${CP_LB_IP}:6443|" kubeconfig.yaml
-
-# Test
-KUBECONFIG=./kubeconfig.yaml kubectl get nodes
-```
-
-## Step 7: Verify everything works
-
-```bash
-# Get ingress LB IP
-INGRESS_IP=$(KUBECONFIG=./kubeconfig.yaml kubectl get svc -n envoy-gateway-system \
-  -l gateway.envoyproxy.io/owning-gateway-name=paysaxas-gateway \
-  -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}')
-
-# App
-curl http://${INGRESS_IP}/
-# → "App is running"
-
-curl http://${INGRESS_IP}/ready
-# → "ready"
-
-# Create and list items
-curl -X POST http://${INGRESS_IP}/items -H "Content-Type: application/json" -d '{"name":"hello"}'
-curl http://${INGRESS_IP}/items
-
-# All pods should be Running
-KUBECONFIG=./kubeconfig.yaml kubectl get pods -A
-
-# Database healthy
-KUBECONFIG=./kubeconfig.yaml kubectl get cluster -n paysaxas
-
-# Backups working
-KUBECONFIG=./kubeconfig.yaml kubectl get backup -n paysaxas
-
-# FluxCD synced
-KUBECONFIG=./kubeconfig.yaml kubectl get kustomizations -n flux-system
-KUBECONFIG=./kubeconfig.yaml kubectl get imagepolicy -n flux-system
-```
-
-## Tear down
-
-```bash
-terraform -chdir=terraform destroy
-```
-
-Note: the hcloud-ccm-managed ingress LB is created by Kubernetes, not Terraform. Delete it manually from Hetzner Console if it persists after destroy.
 
 # Cost estimate
 
