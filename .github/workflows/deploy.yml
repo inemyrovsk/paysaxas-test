@@ -141,6 +141,10 @@ jobs:
           echo "s3_backup_bucket=$(echo "$BACKUP_JSON" | jq -r .s3_bucket)" >> "$GITHUB_OUTPUT"
           echo "etcd_backup_bucket=$(echo "$BACKUP_JSON" | jq -r .etcd_bucket)" >> "$GITHUB_OUTPUT"
 
+          # GitHub token for FluxCD (from infrastructure secret)
+          GITHUB_TOKEN=$(echo "$SECRET_JSON" | jq -r '.github_token // empty')
+          echo "github_token=$GITHUB_TOKEN" >> "$GITHUB_OUTPUT"
+
       - name: Install Ansible
         run: |
           pip install ansible-core kubernetes
@@ -202,7 +206,8 @@ jobs:
             -e "s3_backup_bucket=${{ steps.secrets.outputs.s3_backup_bucket }}" \
             -e "etcd_backup_bucket=${{ steps.secrets.outputs.etcd_backup_bucket }}" \
             -e "backup_access_key_id=${{ steps.secrets.outputs.backup_access_key_id }}" \
-            -e "backup_secret_access_key=${{ steps.secrets.outputs.backup_secret_access_key }}"
+            -e "backup_secret_access_key=${{ steps.secrets.outputs.backup_secret_access_key }}" \
+            -e "github_token=${{ steps.secrets.outputs.github_token }}"
         env:
           ANSIBLE_HOST_KEY_CHECKING: "false"
 

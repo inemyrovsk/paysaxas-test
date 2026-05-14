@@ -219,6 +219,19 @@
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   changed_when: false
 
+- name: Create Flux GitHub token secret
+  ansible.builtin.shell:
+    cmd: |
+      kubectl create secret generic flux-github-token --namespace flux-system \
+        --from-literal=username=flux \
+        --from-literal=password="{{ github_token }}" \
+        --dry-run=client -o yaml | kubectl apply -f -
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: false
+  no_log: true
+  when: github_token is defined and github_token != ""
+
 - name: Copy Flux manifests to server
   ansible.builtin.copy:
     src: "{{ playbook_dir }}/../../flux/"
