@@ -1,5 +1,8 @@
+# Control Plane Load Balancer — dedicated to K8s API (6443)
+# App traffic is handled by a separate LB managed by hcloud-ccm
+
 resource "hcloud_load_balancer" "main" {
-  name               = "${var.project_name}-lb"
+  name               = "${var.project_name}-control-plane"
   load_balancer_type = "lb11"
   location           = var.location
 }
@@ -9,39 +12,6 @@ resource "hcloud_load_balancer_network" "main" {
   subnet_id        = var.subnet_id
 }
 
-# HTTP - TCP passthrough to Envoy Gateway NodePort
-resource "hcloud_load_balancer_service" "http" {
-  load_balancer_id = hcloud_load_balancer.main.id
-  protocol         = "tcp"
-  listen_port      = 80
-  destination_port = 30080
-
-  health_check {
-    protocol = "tcp"
-    port     = 30080
-    interval = 10
-    timeout  = 5
-    retries  = 3
-  }
-}
-
-# HTTPS - TCP passthrough to Envoy Gateway NodePort
-resource "hcloud_load_balancer_service" "https" {
-  load_balancer_id = hcloud_load_balancer.main.id
-  protocol         = "tcp"
-  listen_port      = 443
-  destination_port = 30443
-
-  health_check {
-    protocol = "tcp"
-    port     = 30080
-    interval = 10
-    timeout  = 5
-    retries  = 3
-  }
-}
-
-# K8s API - TCP passthrough for kubectl access
 resource "hcloud_load_balancer_service" "k8s_api" {
   load_balancer_id = hcloud_load_balancer.main.id
   protocol         = "tcp"
@@ -49,10 +19,17 @@ resource "hcloud_load_balancer_service" "k8s_api" {
   destination_port = 6443
 
   health_check {
-    protocol = "tcp"
+    protocol = "https"
     port     = 6443
-    interval = 10
-    timeout  = 5
+
+    http {
+      path         = "/readyz"
+      tls          = true
+      status_codes = ["200", "401"]
+    }
+
+    interval = 15
+    timeout  = 10
     retries  = 3
   }
 }

@@ -90,7 +90,7 @@ resource "local_file" "ansible_inventory" {
   content = templatefile("${path.module}/../ansible/inventory.ini.tpl", {
     nat_ip    = module.hetzner_nat.nat_public_ip
     server_ip = module.hetzner_compute.server_private_ip
-    lb_ip     = module.hetzner_lb.lb_public_ip
+    cp_lb_ip  = module.hetzner_lb.lb_public_ip
   })
   filename = "${path.module}/../ansible/inventory.ini"
 }

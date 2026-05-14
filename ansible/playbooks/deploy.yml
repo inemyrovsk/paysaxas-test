@@ -38,24 +38,45 @@
     - name: Wait for Envoy Gateway proxy service
       ansible.builtin.shell:
         cmd: |
-          for i in $(seq 1 30); do
-            kubectl get svc -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=paysaxas-gateway 2>/dev/null | grep -q LoadBalancer && break
+          for i in $(seq 1 60); do
+            SVC=$(kubectl get svc -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=paysaxas-gateway -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+            [ -n "$SVC" ] && echo "$SVC" && break
             sleep 5
           done
-          kubectl get svc -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=paysaxas-gateway -o name
       register: envoy_svc
       changed_when: false
 
-    - name: Patch Envoy Gateway proxy to fixed NodePorts
+    - name: Annotate Envoy Gateway service for Hetzner LB
       ansible.builtin.shell:
         cmd: |
-          SVC=$(kubectl get svc -n envoy-gateway-system -l gateway.envoyproxy.io/owning-gateway-name=paysaxas-gateway -o jsonpath='{.items[0].metadata.name}')
-          kubectl patch svc "$SVC" -n envoy-gateway-system --type='json' -p='[
-            {"op": "replace", "path": "/spec/ports/0/nodePort", "value": 30080},
-            {"op": "replace", "path": "/spec/ports/1/nodePort", "value": 30443}
-          ]' 2>/dev/null || \
-          kubectl patch svc "$SVC" -n envoy-gateway-system --type='json' -p='[
-            {"op": "replace", "path": "/spec/ports/0/nodePort", "value": 30080}
-          ]'
-      when: envoy_svc.stdout != ""
+          SVC="{{ envoy_svc.stdout | trim }}"
+          kubectl annotate svc "$SVC" -n envoy-gateway-system --overwrite \
+            load-balancer.hetzner.cloud/name=paysaxas-ingress \
+            load-balancer.hetzner.cloud/use-private-ip=true \
+            load-balancer.hetzner.cloud/location={{ hetzner_location }} \
+            load-balancer.hetzner.cloud/type=lb11 \
+            load-balancer.hetzner.cloud/network-zone=eu-central \
+            load-balancer.hetzner.cloud/disable-private-ingress=true
+      when: envoy_svc.stdout | trim != ""
       changed_when: true
+
+    - name: Wait for Hetzner LB to get external IP
+      ansible.builtin.shell:
+        cmd: |
+          SVC="{{ envoy_svc.stdout | trim }}"
+          for i in $(seq 1 60); do
+            IP=$(kubectl get svc "$SVC" -n envoy-gateway-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+            if [ -n "$IP" ] && [ "$IP" != "" ]; then
+              echo "$IP"
+              break
+            fi
+            sleep 5
+          done
+      register: app_lb_ip
+      changed_when: false
+      when: envoy_svc.stdout | trim != ""
+
+    - name: Display App LB IP
+      ansible.builtin.debug:
+        msg: "App Load Balancer IP: {{ app_lb_ip.stdout | default('pending') }}"
+      when: app_lb_ip is defined

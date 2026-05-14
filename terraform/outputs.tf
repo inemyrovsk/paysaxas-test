@@ -8,8 +8,8 @@ output "server_private_ip" {
   value       = module.hetzner_compute.server_private_ip
 }
 
-output "lb_public_ip" {
-  description = "Public IP address of the Hetzner load balancer"
+output "cp_lb_public_ip" {
+  description = "Public IP of the control plane LB (K8s API on 6443)"
   value       = module.hetzner_lb.lb_public_ip
 }
 

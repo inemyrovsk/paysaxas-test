@@ -25,7 +25,7 @@ jobs:
     outputs:
       nat_ip: ${{ steps.tf-output.outputs.nat_ip }}
       server_ip: ${{ steps.tf-output.outputs.server_ip }}
-      lb_ip: ${{ steps.tf-output.outputs.lb_ip }}
+      cp_lb_ip: ${{ steps.tf-output.outputs.cp_lb_ip }}
       s3_backup_bucket: ${{ steps.tf-output.outputs.s3_backup_bucket }}
       backup_access_key_id: ${{ steps.tf-output.outputs.backup_access_key_id }}
       backup_secret_access_key: ${{ steps.tf-output.outputs.backup_secret_access_key }}
@@ -102,7 +102,7 @@ jobs:
         run: |
           echo "nat_ip=$(terraform output -raw nat_public_ip)" >> "$GITHUB_OUTPUT"
           echo "server_ip=$(terraform output -raw server_private_ip)" >> "$GITHUB_OUTPUT"
-          echo "lb_ip=$(terraform output -raw lb_public_ip)" >> "$GITHUB_OUTPUT"
+          echo "cp_lb_ip=$(terraform output -raw cp_lb_public_ip)" >> "$GITHUB_OUTPUT"
           echo "s3_backup_bucket=$(terraform output -raw s3_backup_bucket_name)" >> "$GITHUB_OUTPUT"
           BACKUP_KEY=$(terraform output -raw backup_access_key_id)
           BACKUP_SECRET=$(terraform output -raw backup_secret_access_key)
@@ -149,7 +149,7 @@ jobs:
         run: |
           NAT="${{ needs.terraform.outputs.nat_ip }}"
           K3S="${{ needs.terraform.outputs.server_ip }}"
-          LB="${{ needs.terraform.outputs.lb_ip }}"
+          LB="${{ needs.terraform.outputs.cp_lb_ip }}"
           cat > ansible/inventory.ini <<EOF
           [nat]
           nat1 ansible_host=${NAT} ansible_user=root ansible_port=22022
