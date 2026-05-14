@@ -91,8 +91,31 @@
   until: k3s_readyz.stdout == "ok" or "Unauthorized" in k3s_readyz.stdout
   changed_when: false
 
-# Node won't be Ready until Cilium CNI is installed (k3s-addons role).
-# Only check that the API server responds.
+# Fix node provider ID if it was registered before cloud-provider=external was set.
+# hcloud-ccm needs providerID=hcloud://<server-id>, not k3s://<hostname>.
+- name: Get Hetzner server ID from metadata
+  ansible.builtin.shell:
+    cmd: curl -s http://169.254.169.254/hetzner/v1/metadata/instance-id
+  register: hetzner_server_id
+  changed_when: false
+
+- name: Check node provider ID
+  ansible.builtin.shell:
+    cmd: kubectl get node $(hostname) -o jsonpath='{.spec.providerID}'
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: node_provider_id
+  changed_when: false
+
+- name: Patch node provider ID to hcloud
+  ansible.builtin.shell:
+    cmd: >
+      kubectl patch node $(hostname) --type merge
+      -p '{"spec":{"providerID":"hcloud://{{ hetzner_server_id.stdout }}"}}'
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  when: "'hcloud://' not in node_provider_id.stdout"
+  changed_when: true
 
 - name: Fetch kubeconfig from server
   ansible.builtin.fetch:
